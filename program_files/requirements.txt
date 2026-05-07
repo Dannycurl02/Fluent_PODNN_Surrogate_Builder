@@ -3,4 +3,4 @@ scikit-learn
 tensorflow
 matplotlib
 ansys-fluent-core
-
+PySide6
