@@ -60,6 +60,15 @@ class UserSettings:
         """Get list of recent project folders (filters out non-existent)."""
         return [p for p in self.data.get('recent_project_folders', []) if Path(p).exists()]
 
+    def remove_recent_project_folder(self, project_path):
+        """Drop a folder from the recent list (no-op if not present)."""
+        project_path = str(project_path)
+        recent = self.data.get('recent_project_folders', [])
+        if project_path in recent:
+            recent.remove(project_path)
+            self.data['recent_project_folders'] = recent
+            self.save()
+
     # --- Solver settings ---
 
     def get_solver_settings(self):

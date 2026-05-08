@@ -1,7 +1,7 @@
 """
 Train Page Module
 =================
-Two-column transfer list for sample selection, training config,
+Two-column transfer list (Excluded <-> Training Pool), training config,
 and loss curve display after training.
 """
 
@@ -63,15 +63,15 @@ class TrainPage(QWidget):
         layout.addWidget(title)
         layout.addSpacing(8)
 
-        # --- Transfer list: All Samples <-> Training Samples ---
+        # --- Transfer list: Excluded <-> Training Pool ---
         transfer_row = QHBoxLayout()
 
-        # Left: all samples
+        # Left: excluded samples (not used for training)
         left_frame = QFrame()
         left_frame.setProperty("panel", True)
         left_layout = QVBoxLayout(left_frame)
         left_layout.setContentsMargins(12, 12, 12, 12)
-        self._all_label = QLabel("All Samples")
+        self._all_label = QLabel("Excluded from Training")
         self._all_label.setProperty("secondary", True)
         left_layout.addWidget(self._all_label)
         self._all_list = QListWidget()
@@ -117,7 +117,7 @@ class TrainPage(QWidget):
         right_frame.setProperty("panel", True)
         right_layout = QVBoxLayout(right_frame)
         right_layout.setContentsMargins(12, 12, 12, 12)
-        self._train_label = QLabel("Training Samples")
+        self._train_label = QLabel("Training Pool")
         self._train_label.setProperty("secondary", True)
         right_layout.addWidget(self._train_label)
         self._train_list = QListWidget()
@@ -217,8 +217,8 @@ class TrainPage(QWidget):
     def _update_counts(self):
         total = self._all_list.count() + self._train_list.count()
         train = self._train_list.count()
-        self._all_label.setText(f"All Samples ({self._all_list.count()})")
-        self._train_label.setText(f"Training Samples ({train}/{total})")
+        self._all_label.setText(f"Excluded from Training ({self._all_list.count()})")
+        self._train_label.setText(f"Training Pool ({train}/{total})")
 
     def _get_training_ids(self):
         """Return list of sim IDs in the training list."""
@@ -274,8 +274,10 @@ class TrainPage(QWidget):
                     if sc.widget():
                         sc.widget().deleteLater()
 
-        self._output_cbs = {}   # name -> checkbox
-        self._output_names = {}  # name -> line edit
+        # Each row is keyed by the trainer's model_key (f"{location}_{field}").
+        # Locations with multiple field_variables get one row per field.
+        self._output_cbs = {}   # model_key -> checkbox
+        self._output_names = {}  # model_key -> line edit
 
         if not self.project.output_parameters_file.exists():
             return
@@ -288,7 +290,7 @@ class TrainPage(QWidget):
                 out_data = json.load(f)
 
             for out in out_data.get('outputs', []):
-                name = out['name']
+                location = out['name']
                 category = out.get('category', '')
                 fields = out.get('field_variables', [])
 
@@ -302,34 +304,47 @@ class TrainPage(QWidget):
                 else:
                     dim = '2D'
 
-                # Sanitize name for filesystem
-                safe_name = ''.join(c if c.isalnum() or c in '-_' else '_' for c in name)
-                auto_name = f"{dim}_{safe_name}_v{version}_{timestamp}"
+                # Report Definitions have no field_variables — synthesize one so
+                # the loop produces a single row. Trainer uses 'value' internally.
+                row_fields = fields if fields else ['value']
 
-                cb = QCheckBox(name)
-                cb.setChecked(True)
-                self._output_checks_layout.addWidget(cb)
+                for field in row_fields:
+                    model_key = f"{location}_{field}"
 
-                name_edit = QLineEdit(auto_name)
-                name_edit.setStyleSheet("font-size: 11px;")
-                self._output_checks_layout.addWidget(name_edit)
+                    # Sanitize for filesystem
+                    safe_loc = ''.join(c if c.isalnum() or c in '-_' else '_' for c in location)
+                    safe_field = ''.join(c if c.isalnum() or c in '-_' else '_' for c in field)
+                    if fields:
+                        auto_name = f"{dim}_{safe_loc}_{safe_field}_v{version}_{timestamp}"
+                        label = f"{location} — {field}"
+                    else:
+                        auto_name = f"{dim}_{safe_loc}_v{version}_{timestamp}"
+                        label = location
 
-                # Small spacer between rows
-                self._output_checks_layout.addSpacing(6)
+                    cb = QCheckBox(label)
+                    cb.setChecked(True)
+                    self._output_checks_layout.addWidget(cb)
 
-                self._output_cbs[name] = cb
-                self._output_names[name] = name_edit
+                    name_edit = QLineEdit(auto_name)
+                    name_edit.setStyleSheet("font-size: 11px;")
+                    self._output_checks_layout.addWidget(name_edit)
+
+                    self._output_checks_layout.addSpacing(6)
+
+                    self._output_cbs[model_key] = cb
+                    self._output_names[model_key] = name_edit
         except Exception as e:
             logger.warning(f"Error loading outputs for training: {e}")
 
     def _get_selected_outputs(self):
-        """Return dict of {output_name: model_name} for checked outputs."""
+        """Return dict of {model_key: model_name} for checked rows. model_key is
+        f"{location}_{field}" — matches the trainer's output_filter semantics."""
         result = {}
-        for name, cb in self._output_cbs.items():
+        for model_key, cb in self._output_cbs.items():
             if cb.isChecked():
-                model_name = self._output_names[name].text().strip()
+                model_name = self._output_names[model_key].text().strip()
                 if model_name:
-                    result[name] = model_name
+                    result[model_key] = model_name
         return result
 
     # --- Train ---
@@ -351,7 +366,7 @@ class TrainPage(QWidget):
             return
 
         # Validate no duplicate folder names
-        for out_name, model_name in selected_outputs.items():
+        for model_key, model_name in selected_outputs.items():
             model_dir = self.project.models_dir / model_name
             if model_dir.exists():
                 QMessageBox.warning(self, "Name Exists",
@@ -378,7 +393,7 @@ class TrainPage(QWidget):
             return
 
         self._nn_settings = nn_settings
-        output_name, model_name = self._train_queue.pop(0)
+        model_key, model_name = self._train_queue.pop(0)
         self._current_model_name = model_name
 
         # Create a live canvas tab for this model
@@ -390,7 +405,7 @@ class TrainPage(QWidget):
             model_selection=nn_settings,
             test_size=self._split_spin.value(),
             epochs=self._epochs_spin.value(),
-            output_filter=[output_name],
+            output_filter=[model_key],
         )
         self._worker.model_started.connect(self._on_model_started)
         self._worker.epoch_update.connect(self._on_epoch_update)
@@ -438,8 +453,7 @@ class TrainPage(QWidget):
         ax = fig.add_subplot(111, facecolor=theme.BG_DARK)
         ax.set_xlabel("Epoch", color=theme.TEXT_SECONDARY)
         ax.set_ylabel("Loss", color=theme.TEXT_SECONDARY)
-        ax.set_yscale('log')
-        ax.grid(True, which='both', linestyle='--', alpha=0.3, color=theme.BORDER)
+        ax.grid(True, linestyle='--', alpha=0.3, color=theme.BORDER)
         ax.tick_params(colors=theme.TEXT_SECONDARY)
         for spine in ax.spines.values():
             spine.set_color(theme.BORDER)

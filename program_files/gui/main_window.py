@@ -49,7 +49,7 @@ STEPS = [
     {"name": "DOE",      "index": 1},
     {"name": "Simulate", "index": 2},
     {"name": "Train",    "index": 3},
-    {"name": "Validate", "index": 4},
+    {"name": "Analyze", "index": 4},
 ]
 
 
