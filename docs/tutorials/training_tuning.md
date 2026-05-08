@@ -3,6 +3,8 @@
 `project.train()` accepts a per-output config dict so you can tune POD mode
 count, NN architecture, and hyperparameters per individual output.
 
+> **Run it:** [`examples/training_tuning.py`](https://github.com/UARK-NED3/CFDTwin/blob/master/examples/training_tuning.py) trains three variants of the mixing_elbow surrogate side-by-side and prints a comparison.
+
 ## The three shapes of `outputs=`
 
 ### 1. Omit it — train every output with defaults

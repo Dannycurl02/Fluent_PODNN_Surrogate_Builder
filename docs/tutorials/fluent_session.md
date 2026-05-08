@@ -6,6 +6,8 @@ until run time. So you have to know the keys upfront.
 
 This page shows how to list them from a live Fluent session if you don't.
 
+> **Run it:** [`examples/discovering_bcs.py`](https://github.com/UARK-NED3/CFDTwin/blob/master/examples/discovering_bcs.py) launches Fluent against mixing_elbow and prints every BC, parameter, surface, and report definition it can find.
+
 ## Connect with PyFluent and load your case
 
 ```python

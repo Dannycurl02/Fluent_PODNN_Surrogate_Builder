@@ -3,6 +3,8 @@
 Smallest end-to-end script. Replace `mixing_elbow.cas.h5` with your own
 case file and the input/output names with what your case actually exposes.
 
+> **Run it:** [`examples/quickstart.py`](https://github.com/UARK-NED3/CFDTwin/blob/master/examples/quickstart.py) is the runnable version of this page.
+
 ```python
 import cfdtwin
 
