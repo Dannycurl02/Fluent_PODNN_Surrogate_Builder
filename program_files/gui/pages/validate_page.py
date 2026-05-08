@@ -755,7 +755,7 @@ class ValidatePage(QWidget):
         except Exception:
             return
 
-        from ...modules.doe_setup import load_doe_samples
+        from cfdtwin.doe import load_doe_samples
         _, ranges = load_doe_samples(self.project.doe_samples_file)
 
         for inp in setup.get('model_inputs', []):
@@ -779,7 +779,7 @@ class ValidatePage(QWidget):
             sim_id = self._dataset_combo.currentData()
             if sim_id is None:
                 return None, None
-            from ...modules.doe_setup import load_doe_samples
+            from cfdtwin.doe import load_doe_samples
             samples, _ = load_doe_samples(self.project.doe_samples_file)
             if sim_id - 1 >= len(samples):
                 return None, None
@@ -829,8 +829,8 @@ class ValidatePage(QWidget):
             logger.info("Found cached Fluent data for these params")
         self._last_fluent_data = cached_fluent
 
-        from ...modules.multi_model_visualizer import predict_single_model, predict_dataset_point_single
-        from ...modules.doe_setup import load_doe_samples
+        from cfdtwin.visualization import predict_single_model, predict_dataset_point_single
+        from cfdtwin.doe import load_doe_samples
 
         doe_samples, _ = load_doe_samples(self.project.doe_samples_file)
         model_dir = self.project.models_dir / name
@@ -1126,7 +1126,7 @@ class ValidatePage(QWidget):
             return
 
         try:
-            from ...modules.multi_model_visualizer import predict_test_set
+            from cfdtwin.visualization import predict_test_set
             model_dir = self.project.models_dir / model_name
             summary_file = model_dir / "training_summary.json"
             result = predict_test_set(
@@ -1202,7 +1202,7 @@ class ValidatePage(QWidget):
     def _open_pred_vs_truth_window(self, model_name):
         """Build and pop out a Predicted-vs-Truth scatter for a 1D scalar model
         across the test set saved in training_summary.json."""
-        from ...modules.multi_model_visualizer import predict_test_set
+        from cfdtwin.visualization import predict_test_set
         model_dir = self.project.models_dir / model_name
         summary_file = model_dir / "training_summary.json"
 

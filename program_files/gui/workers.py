@@ -9,8 +9,8 @@ import logging
 from pathlib import Path
 from PySide6.QtCore import QThread, Signal
 
-from ..modules.fluent_interface import launch_fluent
-from ..modules.simulation_runner import run_remaining_simulations
+from cfdtwin.fluent import launch_fluent
+from cfdtwin.simulation import run_remaining_simulations
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +156,7 @@ class TrainingWorker(QThread):
             import time
             import matplotlib
             matplotlib.use('Agg')
-            from ..modules.multi_model_trainer import train_all_models
+            from cfdtwin.training import train_all_models
 
             def on_progress(name, status):
                 if status == 'training':
@@ -221,7 +221,7 @@ class ValidationWorker(QThread):
 
     def run(self):
         try:
-            from ..modules.multi_model_visualizer import run_fluent_comparison
+            from cfdtwin.visualization import run_fluent_comparison
 
             results = run_fluent_comparison(
                 solver=self.solver,

@@ -64,3 +64,29 @@ The Fluent comparison system in the Validate page (`run_fluent_comparison`) reus
 - Manual test with a known case: run a validation sim, compare results against the same DOE point's stored NPZ
 - Add a "Validate cached run" button that re-loads cached NPZ and compares keys against model metadata
 - Log the NPZ keys stored in cache vs keys expected by each model for debugging mismatches
+
+---
+
+## 4. Refactor GUI to use the cfdtwin Project API
+
+**Risk**: Medium (drift over time)
+
+After the cfdtwin package ships (v0.1.0), the GUI continues to call low-level
+module functions directly (e.g. `simulation_runner.run_remaining_simulations`).
+The new Project class wraps the same calls for library users. Result: two
+parallel code paths for the same operations — risk of drift as the API evolves.
+
+**What this work involves**:
+- Replace direct module calls in `program_files/gui/pages/*.py` with `Project`
+  method calls (e.g. `project.run_simulations(...)`).
+- Thread the result objects (SimulationResult, TrainingResult, PredictionResult)
+  back through Qt signals into the GUI.
+- Remove duplicated state management — GUI reads from the Project instance.
+
+**Why deferred**:
+- The Project API needs to stabilize in real use first; refactoring against an
+  API that may still shift wastes effort.
+- ~1-2 days of refactor + retesting risk on the GUI.
+
+**When to do it**: after a few weeks of cfdtwin v0.1.x usage, once the API
+hasn't needed breaking changes.

@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSize
 
 from . import theme
-from ..modules.project_system import WorkflowProject, create_project, open_project
+from cfdtwin._project_system import WorkflowProject, create_project, open_project
 
 logger = logging.getLogger(__name__)
 

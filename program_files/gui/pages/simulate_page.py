@@ -142,7 +142,7 @@ class SimulatePage(QWidget):
             self._table.setItem(i, 2, QTableWidgetItem(""))
 
     def _get_total_doe_points(self):
-        from ...modules.doe_setup import load_doe_samples
+        from cfdtwin.doe import load_doe_samples
         samples, _ = load_doe_samples(self.project.doe_samples_file)
         return len(samples)
 
@@ -215,7 +215,7 @@ class SimulatePage(QWidget):
             return
 
         # Load DOE samples
-        from ...modules.doe_setup import load_doe_samples
+        from cfdtwin.doe import load_doe_samples
         doe_samples, _ = load_doe_samples(self.project.doe_samples_file)
         if not doe_samples:
             QMessageBox.warning(self, "No DOE", "No DOE samples found. Generate samples in the DOE step first.")

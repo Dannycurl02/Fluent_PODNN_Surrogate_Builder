@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex, Signal
 
 from .. import theme
-from ...modules.doe_setup import (
+from cfdtwin.doe import (
     generate_lhs_samples, generate_factorial_samples,
     save_doe_samples, load_doe_samples,
 )

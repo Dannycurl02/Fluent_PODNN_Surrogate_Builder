@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
-from ..modules.surrogate_nn import PRESETS
+from cfdtwin.nn import PRESETS
 
 logger = logging.getLogger(__name__)
 

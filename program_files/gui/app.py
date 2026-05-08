@@ -24,7 +24,7 @@ from .pages.doe_page import DOEPage
 from .pages.simulate_page import SimulatePage
 from .pages.train_page import TrainPage
 from .pages.validate_page import ValidatePage
-from ..modules.user_settings import UserSettings
+from .user_settings import UserSettings
 
 logger = logging.getLogger(__name__)
 

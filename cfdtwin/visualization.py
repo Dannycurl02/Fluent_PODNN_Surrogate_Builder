@@ -15,8 +15,8 @@ from matplotlib.colors import TwoSlopeNorm
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.interpolate import griddata
 
-from .surrogate_nn import SurrogateNN
-from .pod_reducer import PODReducer
+from .nn import SurrogateNN
+from .pod import PODReducer
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +194,7 @@ def run_fluent_comparison(solver, setup_data, dataset_dir, params, iterations=10
     params : dict {bc_name|param_name: value}
     iterations : int
     """
-    from . import simulation_runner as sr
+    from . import simulation as sr
 
     # Build bc_values in the format apply_boundary_conditions expects
     bc_type_map = {i['name']: i['type'] for i in setup_data.get('model_inputs', [])}
@@ -562,7 +562,7 @@ def run_fluent_validation(dataset_dir, setup_data, custom_params, param_info, it
         Dictionary of Fluent results (field data + coordinates), or None if failed
     """
     try:
-        from . import simulation_runner as sr
+        from . import simulation as sr
         import ansys.fluent.core as pyfluent
 
         case_file = setup_data.get('case_file')

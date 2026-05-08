@@ -25,9 +25,9 @@ from ..fluent_manager import FluentManager
 from ..workers import FluentLaunchWorker
 from ..error_helpers import InlineErrorBanner
 from ..spinner import LoadingOverlay
-from ...modules.project_manager import get_available_inputs, get_available_outputs
-from ...modules.doe_setup import get_bc_parameters
-from ...modules.output_parameters import get_available_field_variables
+from cfdtwin._project_manager import get_available_inputs, get_available_outputs
+from cfdtwin.doe import get_bc_parameters
+from cfdtwin.output_parameters import get_available_field_variables
 
 logger = logging.getLogger(__name__)
 

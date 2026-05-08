@@ -17,8 +17,8 @@ from datetime import datetime
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 
-from .surrogate_nn import SurrogateNN
-from .pod_reducer import PODReducer
+from .nn import SurrogateNN
+from .pod import PODReducer
 from .metrics import compute_metrics
 
 logger = logging.getLogger(__name__)
