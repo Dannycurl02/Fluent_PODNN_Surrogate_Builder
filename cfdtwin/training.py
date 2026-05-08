@@ -328,7 +328,8 @@ def load_training_data(dataset_dir, exclude_range=None):
 
 def train_all_models(dataset_dir, model_name, model_selection=None,
                      test_size=0.2, epochs=500, exclude_range=None,
-                     on_progress=None, output_filter=None, on_epoch=None):
+                     on_progress=None, output_filter=None, on_epoch=None,
+                     random_seed=42, per_output_pod=None, per_output_nn=None):
     """
     Train models for all outputs in a case.
 
@@ -349,6 +350,17 @@ def train_all_models(dataset_dir, model_name, model_selection=None,
         Range of simulation numbers to exclude
     on_progress : callable, optional
         Called as on_progress(model_name, status_str) for each model
+    random_seed : int, default 42
+        Seed for the train/test split.
+    per_output_pod : dict, optional
+        Maps model_key (f"{location}_{field}") to a POD config dict. Each
+        value may have 'modes' (int) OR 'variance' (float in (0,1]). When
+        omitted, POD modes auto-detect from data shape (legacy behavior).
+    per_output_nn : dict, optional
+        Maps model_key to NN overrides. Each value may have 'preset' to
+        switch base preset, plus any SurrogateNN config keys to override
+        (hidden_layers, dropout, learning_rate, l2, batch_size,
+        es_patience, lr_patience, ...).
 
     Returns
     -------
@@ -360,6 +372,8 @@ def train_all_models(dataset_dir, model_name, model_selection=None,
 
     if model_selection is None:
         model_selection = {'1D': 'SurrogateNN', '2D': 'POD+NN', '3D': 'POD+NN'}
+    per_output_pod = per_output_pod or {}
+    per_output_nn = per_output_nn or {}
 
     # Load data
     data = load_training_data(dataset_dir, exclude_range=exclude_range)
@@ -371,7 +385,7 @@ def train_all_models(dataset_dir, model_name, model_selection=None,
                 f"{len(outputs)} outputs, test={test_size}, epochs={epochs}")
 
     # Split data
-    train_idx, test_idx = train_test_split(np.arange(len(X_params)), test_size=test_size, random_state=42)
+    train_idx, test_idx = train_test_split(np.arange(len(X_params)), test_size=test_size, random_state=random_seed)
     logger.info(f"Train: {len(train_idx)}, Test: {len(test_idx)}")
 
     # Create models directory
@@ -407,16 +421,28 @@ def train_all_models(dataset_dir, model_name, model_selection=None,
         if on_progress:
             on_progress(output_model_name, 'training')
 
-        # POD reduction for 2D/3D
+        # POD reduction for 2D/3D — per-output override > auto-detected modes.
         pod = None
         if output_type in ['2D', '3D']:
-            pod = PODReducer(n_modes=info['n_modes'])
+            pod_cfg = per_output_pod.get(output_key, {})
+            if 'modes' in pod_cfg and 'variance' in pod_cfg:
+                raise ValueError(
+                    f"per_output_pod[{output_key!r}]: specify 'modes' or 'variance', not both"
+                )
+            if 'variance' in pod_cfg:
+                pod = PODReducer(variance=float(pod_cfg['variance']))
+            elif 'modes' in pod_cfg:
+                pod = PODReducer(n_modes=int(pod_cfg['modes']))
+            else:
+                pod = PODReducer(n_modes=info['n_modes'])
             train_targets = pod.fit_transform(output_data[train_idx])
         else:
             train_targets = output_data[train_idx]
 
-        # Train NN
-        nn = SurrogateNN.from_preset(preset, field_name=output_key)
+        # Train NN — per-output config can change preset and override any field.
+        nn_cfg = dict(per_output_nn.get(output_key, {}))
+        nn_preset = nn_cfg.pop('preset', preset)
+        nn = SurrogateNN.from_preset(nn_preset, field_name=output_key, **nn_cfg)
 
         # Per-epoch callback that tags the model name for GUI routing
         epoch_cb = None

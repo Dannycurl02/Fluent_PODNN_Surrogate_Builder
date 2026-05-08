@@ -17,15 +17,20 @@ class PODReducer:
     """
     PCA-based POD for reducing field data dimensionality.
 
-    Parameters
-    ----------
-    n_modes : int
-        Number of POD modes to retain
+    Truncation can be specified two ways (mutually exclusive):
+        n_modes  — fixed integer count
+        variance — float in (0, 1], retain enough modes to capture this fraction
     """
 
-    def __init__(self, n_modes=10):
-        self.n_modes = n_modes
-        self.pca = PCA(n_components=n_modes)
+    def __init__(self, n_modes=None, variance=None):
+        if n_modes is not None and variance is not None:
+            raise ValueError("Specify n_modes or variance, not both")
+        if n_modes is None and variance is None:
+            n_modes = 10  # legacy default
+        self.n_modes = n_modes               # may be None when variance-driven
+        self.variance = variance             # may be None when count-driven
+        n_components = n_modes if n_modes is not None else variance
+        self.pca = PCA(n_components=n_components)
         self.variance_explained = None
 
     def fit_transform(self, fields):
@@ -45,13 +50,16 @@ class PODReducer:
         n_samples, n_features = fields.shape
         max_modes = min(n_samples, n_features)
 
-        if self.n_modes > max_modes:
+        # Cap fixed-count requests so PCA doesn't error on small datasets.
+        if self.n_modes is not None and self.n_modes > max_modes:
             logger.warning(f"Requested {self.n_modes} POD modes but max is {max_modes}. Reducing to {max_modes}.")
             self.n_modes = max_modes
             self.pca = PCA(n_components=max_modes)
 
         modes = self.pca.fit_transform(fields)
         self.variance_explained = self.pca.explained_variance_ratio_
+        # When variance-driven, sklearn picks the count for us — record it.
+        self.n_modes = int(self.pca.n_components_)
         logger.info(f"POD: {n_features} points -> {self.n_modes} modes "
                     f"({self.variance_explained.sum()*100:.2f}% variance explained)")
         return modes
