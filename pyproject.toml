@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cfdtwin"
+description = "Neural-network surrogate models for ANSYS Fluent simulations."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Danny Curl", email = "dannycurl02@gmail.com"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
+dynamic = ["version"]
+dependencies = [
+    "numpy",
+    "scipy",
+    "scikit-learn",
+    "tensorflow>=2.20,<2.21",
+    "matplotlib",
+    "ansys-fluent-core",
+    "PySide6",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-mock"]
+
+[project.urls]
+Homepage = "https://github.com/UARK-NED3/CFDTwin"
+Issues = "https://github.com/UARK-NED3/CFDTwin/issues"
+
+[tool.hatch.version]
+path = "cfdtwin/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["cfdtwin"]

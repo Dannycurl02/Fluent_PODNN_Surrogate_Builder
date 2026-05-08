@@ -1,5 +1,7 @@
 """cfdtwin — neural-network surrogate models for ANSYS Fluent simulations.
 
-Phase 1 of the package refactor: this module is intentionally empty.
-The public Project API will be exposed here in Phase 5.
+The public Project API will be exposed here in Phase 5. Until then this
+file only exports the version string so packaging metadata can find it.
 """
+
+__version__ = "0.1.0.dev0"
