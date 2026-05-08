@@ -19,7 +19,7 @@ from PySide6.QtCore import Qt, Signal
 from .. import theme
 from ..fluent_manager import FluentManager
 from ..dataset_manager import DatasetManager
-from ..workers import SimulationWorker
+from ..workers import FluentLaunchWorker, SimulationWorker
 from ..spinner import SpinnerWidget
 
 logger = logging.getLogger(__name__)
@@ -146,12 +146,61 @@ class SimulatePage(QWidget):
         samples, _ = load_doe_samples(self.project.doe_samples_file)
         return len(samples)
 
+    # --- Launch Fluent prompt ---
+
+    def _prompt_launch_fluent(self):
+        """Offer to launch Fluent inline. Falls back to the 'go to Setup' message
+        if the project doesn't have the case file + solver settings needed for a
+        one-click launch."""
+        case_file = self.project.get_case_file()
+        solver_settings = self.project.info.get('solver_settings') if self.project.info else None
+        if not case_file or not Path(case_file).exists() or not solver_settings:
+            QMessageBox.warning(
+                self, "Not Connected",
+                "Fluent is not connected. Go to Setup and launch Fluent.",
+            )
+            return
+
+        reply = QMessageBox.question(
+            self, "Fluent Not Running",
+            "Fluent isn't running. Would you like to start it?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        FluentManager.instance().set_launching()
+        self._run_btn.setEnabled(False)
+        self._spinner.start()
+
+        self._launch_worker = FluentLaunchWorker(
+            case_file, solver_settings, self.project.logs_dir,
+        )
+        self._launch_worker.finished.connect(self._on_fluent_launched)
+        self._launch_worker.error.connect(self._on_fluent_launch_error)
+        self._launch_worker.start()
+
+    def _on_fluent_launched(self, solver):
+        FluentManager.instance().set_connected(solver)
+        self._spinner.stop()
+        self._launch_worker = None
+        # Continue with what the user originally clicked.
+        self._start_simulations()
+
+    def _on_fluent_launch_error(self, msg):
+        FluentManager.instance().set_failed()
+        self._spinner.stop()
+        self._run_btn.setEnabled(True)
+        self._launch_worker = None
+        QMessageBox.critical(self, "Fluent Launch Error", msg)
+
     # --- Run ---
 
     def _start_simulations(self):
         fm = FluentManager.instance()
         if not fm.is_available():
-            QMessageBox.warning(self, "Not Connected", "Fluent is not connected. Go to Setup and launch Fluent.")
+            self._prompt_launch_fluent()
             return
 
         if not self.project.model_setup_file.exists():
@@ -185,6 +234,7 @@ class SimulatePage(QWidget):
             doe_samples=doe_samples,
         )
         self._worker.progress.connect(self._on_progress)
+        self._worker.iteration_progress.connect(self._on_iteration_progress)
         self._worker.finished.connect(self._on_finished)
         self._worker.error.connect(self._on_error)
         self._worker.start()
@@ -207,15 +257,38 @@ class SimulatePage(QWidget):
             status_item = QTableWidgetItem(status.capitalize())
             if status == 'done':
                 status_item.setForeground(Qt.green)
+                # Lock the Details bar at full when sim completes
+                bar = self._table.cellWidget(row, 2)
+                if isinstance(bar, QProgressBar):
+                    bar.setValue(bar.maximum())
                 # Unlock Train step as soon as first sim completes
                 self.simulations_changed.emit()
             elif status == 'failed':
                 status_item.setForeground(Qt.red)
             elif status == 'running':
                 status_item.setForeground(Qt.yellow)
+                # Drop a fresh per-sim progress bar into the Details cell.
+                bar = QProgressBar()
+                bar.setRange(0, 100)  # max gets corrected on first iteration_progress
+                bar.setValue(0)
+                bar.setTextVisible(True)
+                bar.setFormat("0/%m")
+                self._table.setCellWidget(row, 2, bar)
             self._table.setItem(row, 1, status_item)
 
         self._status_label.setText(f"Running sample {sim_id} ({idx}/{total})")
+
+    def _on_iteration_progress(self, sim_id, current, max_iter):
+        row = sim_id - 1
+        if not (0 <= row < self._table.rowCount()):
+            return
+        bar = self._table.cellWidget(row, 2)
+        if not isinstance(bar, QProgressBar):
+            return
+        if bar.maximum() != max_iter:
+            bar.setRange(0, max_iter)
+        bar.setValue(min(current, max_iter))
+        bar.setFormat(f"{current}/{max_iter}")
 
     def _on_finished(self, summary):
         fm = FluentManager.instance()

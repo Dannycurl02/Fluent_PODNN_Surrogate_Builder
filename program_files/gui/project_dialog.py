@@ -6,6 +6,9 @@ and Recent Projects. Returns a WorkflowProject or None.
 """
 
 import logging
+import os
+import shutil
+import stat
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -88,7 +91,6 @@ class ProjectDialog(QDialog):
         self._folder_edit.setPlaceholderText("Choose folder...")
         self._browse_btn = QPushButton("Browse")
         self._browse_btn.setProperty("flat", True)
-        self._browse_btn.setFixedWidth(70)
         folder_row.addWidget(self._folder_edit, 1)
         folder_row.addWidget(self._browse_btn)
         cp_layout.addLayout(folder_row)
@@ -126,6 +128,17 @@ class ProjectDialog(QDialog):
         """)
         layout.addWidget(self._recent_list, 1)
 
+        # Load / Delete row under the recent list
+        recent_btn_row = QHBoxLayout()
+        self._load_recent_btn = QPushButton("Load")
+        self._load_recent_btn.setEnabled(False)
+        self._delete_recent_btn = QPushButton("Delete")
+        self._delete_recent_btn.setEnabled(False)
+        recent_btn_row.addWidget(self._load_recent_btn)
+        recent_btn_row.addWidget(self._delete_recent_btn)
+        recent_btn_row.addStretch()
+        layout.addLayout(recent_btn_row)
+
         # --- Connections ---
         self._new_btn.clicked.connect(self._toggle_create_panel)
         self._open_btn.clicked.connect(self._open_existing)
@@ -133,6 +146,9 @@ class ProjectDialog(QDialog):
         self._create_confirm_btn.clicked.connect(self._create_new)
         self._name_edit.textChanged.connect(self._validate_create)
         self._recent_list.itemDoubleClicked.connect(self._open_recent)
+        self._recent_list.itemSelectionChanged.connect(self._update_recent_buttons)
+        self._load_recent_btn.clicked.connect(self._load_selected_recent)
+        self._delete_recent_btn.clicked.connect(self._delete_selected_recent)
 
     # --- Recent projects ---
 
@@ -229,3 +245,115 @@ class ProjectDialog(QDialog):
         self.project = project
         logger.info(f"Opened project: {project.info.get('project_name', 'Unknown')}")
         self.accept()
+
+    # --- Recent list buttons ---
+
+    def _selected_recent_path(self):
+        """Return the path of the currently selected recent project, or None."""
+        items = self._recent_list.selectedItems()
+        if not items:
+            return None
+        path = items[0].data(Qt.UserRole)
+        return path  # None for the "No recent projects" placeholder
+
+    def _update_recent_buttons(self):
+        has_path = self._selected_recent_path() is not None
+        self._load_recent_btn.setEnabled(has_path)
+        self._delete_recent_btn.setEnabled(has_path)
+
+    def _load_selected_recent(self):
+        path = self._selected_recent_path()
+        if path:
+            self._try_open(path)
+
+    def _delete_selected_recent(self):
+        path = self._selected_recent_path()
+        if not path:
+            return
+        dlg = DeleteCountdownDialog(path, self)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        # Confirmed. Drop from recent list and delete folder from disk.
+        self.settings.remove_recent_project_folder(path)
+        try:
+            shutil.rmtree(path, onerror=_force_remove)
+            logger.info(f"Deleted project folder: {path}")
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Delete Failed",
+                f"Couldn't delete folder:\n{e}\n\n"
+                f"If files are open in another app (e.g. Fluent), close them and try again.",
+            )
+        self._populate_recent()
+        self._update_recent_buttons()
+
+
+def _force_remove(func, path, exc_info):
+    """rmtree onerror handler: clear read-only bit and retry."""
+    try:
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+    except Exception:
+        raise
+
+
+class DeleteCountdownDialog(QDialog):
+    """Three-stage Yes-confirmation. Each Yes click advances to the next, harder
+    warning. Final Yes accepts."""
+
+    STAGES = [
+        ("Delete Project",
+         "This will permanently delete the project folder and all of its contents.\n\nAre you sure?"),
+        ("Last chance.",
+         "Once deleted, simulation results, trained models, and configs cannot be recovered.\n\nReally delete?"),
+    ]
+
+    def __init__(self, project_path, parent=None):
+        super().__init__(parent)
+        self._stage = 0
+
+        self.setWindowTitle("Delete Project")
+        self.setFixedWidth(420)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        self._heading = QLabel()
+        f = self._heading.font()
+        f.setBold(True)
+        self._heading.setFont(f)
+        layout.addWidget(self._heading)
+
+        self._path_label = QLabel(str(project_path))
+        self._path_label.setProperty("secondary", True)
+        self._path_label.setWordWrap(True)
+        layout.addWidget(self._path_label)
+
+        self._body = QLabel()
+        self._body.setWordWrap(True)
+        layout.addWidget(self._body)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        self._cancel_btn = QPushButton("Cancel")
+        self._yes_btn = QPushButton("Yes")
+        self._cancel_btn.clicked.connect(self.reject)
+        self._yes_btn.clicked.connect(self._on_yes)
+        btn_row.addWidget(self._cancel_btn)
+        btn_row.addWidget(self._yes_btn)
+        layout.addLayout(btn_row)
+
+        self._enter_stage(0)
+
+    def _enter_stage(self, stage):
+        self._stage = stage
+        title, body = self.STAGES[stage]
+        self._heading.setText(title)
+        self._body.setText(body)
+
+    def _on_yes(self):
+        if self._stage + 1 < len(self.STAGES):
+            self._enter_stage(self._stage + 1)
+        else:
+            self.accept()
