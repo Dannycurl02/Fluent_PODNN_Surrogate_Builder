@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from program_files.gui.dataset_manager import DatasetManager
+from gui.dataset_manager import DatasetManager
 
 
 @pytest.fixture

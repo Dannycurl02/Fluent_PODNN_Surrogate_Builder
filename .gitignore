@@ -44,5 +44,12 @@ site/
 build/
 dist/
 
-# User settings
-program_files/user_settings.json
+# SolidWorks lock files + per-validation runtime output / Backup folders
+**/~$*
+validations/*/output/
+validations/*/Backup/
+
+# User settings + runtime logs
+gui/user_settings.json
+gui/cfdtwin.log*
+gui/cfdtwin_fault.log*

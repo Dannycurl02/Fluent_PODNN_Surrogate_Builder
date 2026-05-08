@@ -77,7 +77,7 @@ The new Project class wraps the same calls for library users. Result: two
 parallel code paths for the same operations — risk of drift as the API evolves.
 
 **What this work involves**:
-- Replace direct module calls in `program_files/gui/pages/*.py` with `Project`
+- Replace direct module calls in `gui/pages/*.py` with `Project`
   method calls (e.g. `project.run_simulations(...)`).
 - Thread the result objects (SimulationResult, TrainingResult, PredictionResult)
   back through Qt signals into the GUI.

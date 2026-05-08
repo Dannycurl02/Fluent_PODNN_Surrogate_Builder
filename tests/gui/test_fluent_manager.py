@@ -9,7 +9,7 @@ os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 
 from PySide6.QtWidgets import QApplication
 
-from program_files.gui.fluent_manager import FluentManager, FluentStatus
+from gui.fluent_manager import FluentManager, FluentStatus
 
 
 @pytest.fixture(scope="module")

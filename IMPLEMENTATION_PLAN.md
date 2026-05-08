@@ -26,7 +26,8 @@ cfdtwin/                               ← new top-level package
 ```
 
 GUI: update every `from program_files.modules.X` → `from cfdtwin.X`
-(~30 occurrences across 8 files).
+(~30 occurrences across 8 files). Subsequent reorg moved `program_files/gui/`
+up to `gui/` at repo root and dropped the `program_files/` wrapper entirely.
 
 Validation: launch the GUI, run the Test100 project end-to-end. Smoke test
 only — no behavior should change.

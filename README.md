@@ -7,8 +7,8 @@ Wizard-based desktop app for building neural-network surrogate models from ANSYS
 Requires Python 3.10+ and a working ANSYS Fluent installation.
 
 ```
-pip install -r program_files/requirements.txt
-pip install PySide6 scipy pytest pytest-qt
+pip install -e .
+pip install pytest pytest-qt
 ```
 
 ## Run
@@ -16,7 +16,7 @@ pip install PySide6 scipy pytest pytest-qt
 From the repo root:
 
 ```
-python -m program_files.gui
+python -m gui
 ```
 
 On launch, select or create a project. The sidebar steps unlock as prerequisites are met:

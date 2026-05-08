@@ -28,10 +28,10 @@ from .user_settings import UserSettings
 
 logger = logging.getLogger(__name__)
 
-# Settings file lives next to the Python package (portable)
-_SETTINGS_FILE = Path(__file__).resolve().parent.parent / "user_settings.json"
-_LOG_FILE = Path(__file__).resolve().parent.parent / "cfdtwin.log"
-_FAULT_FILE = Path(__file__).resolve().parent.parent / "cfdtwin_fault.log"
+# Runtime files live inside the gui/ folder (portable, easy to find)
+_SETTINGS_FILE = Path(__file__).resolve().parent / "user_settings.json"
+_LOG_FILE = Path(__file__).resolve().parent / "cfdtwin.log"
+_FAULT_FILE = Path(__file__).resolve().parent / "cfdtwin_fault.log"
 
 
 def _install_crash_handlers():

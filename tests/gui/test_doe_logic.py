@@ -17,7 +17,7 @@ from cfdtwin.doe import (
     save_doe_samples,
     load_doe_samples,
 )
-from program_files.gui.pages.doe_page import DOESampleModel
+from gui.pages.doe_page import DOESampleModel
 
 
 @pytest.fixture(scope="module")
