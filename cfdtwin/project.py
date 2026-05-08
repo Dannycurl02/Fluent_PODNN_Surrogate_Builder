@@ -439,8 +439,7 @@ class Project:
             )
 
         # Discover available output keys to filter and to validate user input.
-        from .training import load_training_data
-        data = load_training_data(self._wp.project_path, exclude_range=exclude_range)
+        data = _training.load_training_data(self._wp.project_path, exclude_range=exclude_range)
         available_keys = list(data['outputs'].keys())
 
         outputs_cfg = _normalize_outputs(outputs, available_keys)

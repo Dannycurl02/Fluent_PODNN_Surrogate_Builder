@@ -33,8 +33,7 @@ __pycache__/
 #python scripts
 visualize_pod.py
 
-# Test and project data
-tests/
+# Project data (kept out of git; tests below are tracked)
 Testing/
 
 # User settings
