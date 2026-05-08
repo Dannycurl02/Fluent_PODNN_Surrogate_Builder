@@ -67,9 +67,9 @@ def load_matching_coordinates(dataset_dir, coord_key, npz_key, expected_size):
     -------
     (np.ndarray or None, None)
     """
-    coord_file = dataset_dir / "dataset" / "coordinates.npz"
+    coord_file = dataset_dir / "coordinates.npz"
     if not coord_file.exists():
-        logger.error(f"coordinates.npz not found in {dataset_dir / 'dataset'}")
+        logger.error(f"coordinates.npz not found in {dataset_dir}")
         return None, None
 
     coord_data = np.load(coord_file, allow_pickle=True)
@@ -243,6 +243,104 @@ def run_fluent_comparison(solver, setup_data, dataset_dir, params, iterations=10
         return None
 
     return {k: np.asarray(v) for k, v in fluent_results.items()}
+
+
+def predict_test_set(model_dir, dataset_dir, doe_samples_file, training_summary_file):
+    """Run a 1D scalar model on every test sample listed in training_summary.json.
+
+    Returns
+    -------
+    dict or None
+        {'truths': np.ndarray, 'predictions': np.ndarray, 'sim_ids': list[int]}
+        Truth/prediction arrays are 1D, length = number of test samples.
+    """
+    import json as _json
+
+    model_dir = Path(model_dir)
+    dataset_dir = Path(dataset_dir)
+    meta = load_model_folder(model_dir)
+    if meta is None:
+        return None
+
+    summary_path = Path(training_summary_file)
+    if not summary_path.exists():
+        raise FileNotFoundError(f"training_summary.json not found at {summary_path}")
+    with open(summary_path, 'r') as f:
+        summary = _json.load(f)
+    test_indices = summary.get('test_indices')
+    if not test_indices:
+        raise ValueError("No test_indices in training_summary.json")
+
+    # Recreate the trainer's filtered + ordered list. Trainer iterates sorted
+    # sim_*.npz files and keeps those with the expected shape for each model.
+    npz_key = meta['npz_key']
+    expected_n = int(meta.get('n_points', 1))
+
+    sim_files = sorted(dataset_dir.glob("sim_*.npz"))
+    valid_records = []  # (sim_id, sim_file)
+    for sim_file in sim_files:
+        try:
+            sim_id = int(sim_file.stem.split('_')[1])
+        except (ValueError, IndexError):
+            continue
+        try:
+            data = np.load(sim_file, allow_pickle=True)
+        except Exception:
+            continue
+        if npz_key not in data.files:
+            continue
+        if len(data[npz_key]) != expected_n:
+            continue
+        valid_records.append((sim_id, sim_file))
+
+    if max(test_indices) >= len(valid_records):
+        raise IndexError(
+            f"Stored test_indices reference {max(test_indices) + 1} samples, but "
+            f"only {len(valid_records)} valid sims exist on disk now. Did the "
+            f"dataset change since training?"
+        )
+
+    # Load DOE samples for parameter recovery (sorted-key order matches trainer)
+    if not Path(doe_samples_file).exists():
+        raise FileNotFoundError(f"doe_samples.json not found at {doe_samples_file}")
+    with open(doe_samples_file, 'r') as f:
+        doe_data = _json.load(f)
+    samples = doe_data.get('samples', [])
+    if not samples:
+        raise ValueError("No DOE samples available")
+    param_names = sorted(samples[0].keys())
+
+    truths = []
+    X_list = []
+    test_sim_ids = []
+    for ti in test_indices:
+        sim_id, sim_file = valid_records[ti]
+        if sim_id - 1 >= len(samples):
+            continue
+        sample = samples[sim_id - 1]
+        X_list.append([sample[k] for k in param_names])
+        truth_arr = np.load(sim_file, allow_pickle=True)[npz_key]
+        truths.append(np.asarray(truth_arr).flatten())  # keep full field
+        test_sim_ids.append(sim_id)
+
+    X = np.array(X_list)
+    model_name = meta['model_name']
+    model_path = model_dir / model_name
+    Y_pred = load_and_predict(model_path, meta, X)
+    preds = np.asarray(Y_pred)
+    truths_arr = np.array(truths)
+    if preds.ndim == 1:
+        preds = preds.reshape(-1, 1)
+    if truths_arr.ndim == 1:
+        truths_arr = truths_arr.reshape(-1, 1)
+
+    return {
+        # Both shape (n_test, n_points). 1D scalar models have n_points==1.
+        'truths': truths_arr[:len(test_sim_ids)],
+        'predictions': preds[:len(test_sim_ids)],
+        'sim_ids': test_sim_ids,
+        'metadata': meta,
+    }
 
 
 def predict_dataset_point_single(model_dir, dataset_dir, doe_samples, sim_id):

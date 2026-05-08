@@ -67,6 +67,7 @@ class SimulationWorker(QThread):
     """
 
     progress = Signal(int, int, int, str)
+    iteration_progress = Signal(int, int, int)  # (sim_id, current_iter, max_iter)
     finished = Signal(dict)
     error = Signal(str)
 
@@ -85,14 +86,29 @@ class SimulationWorker(QThread):
 
     def run(self):
         try:
+            import time
+
             def on_progress(idx, total, sim_id, status):
                 self.progress.emit(idx, total, sim_id, status)
+
+            # Throttle iteration emissions to ~5 Hz; always emit the final iteration.
+            last_emit = [-1e9]
+            last_state = [None]  # (sim_id, current, max) of pending throttled emit
+
+            def on_iteration(sim_id, current, max_iter):
+                now = time.monotonic()
+                last_state[0] = (sim_id, current, max_iter)
+                # Emit if first/last iter or 200ms+ since last emit.
+                if current == 1 or current >= max_iter or now - last_emit[0] >= 0.2:
+                    self.iteration_progress.emit(sim_id, current, max_iter)
+                    last_emit[0] = now
 
             summary = run_remaining_simulations(
                 solver=self.solver,
                 setup_data=self.setup_data,
                 dataset_dir=self.dataset_dir,
                 on_progress=on_progress,
+                on_iteration=on_iteration,
                 stop_flag=lambda: self.stop_requested,
                 reinitialize=self.reinitialize,
                 doe_samples=self.doe_samples,

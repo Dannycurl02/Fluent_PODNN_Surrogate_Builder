@@ -5,8 +5,11 @@ Launches the PySide6 application, shows project dialog, opens main window.
 Wires up all pages, settings dialog, fluent manager, step unlocking.
 """
 
-import sys
+import faulthandler
 import logging
+import logging.handlers
+import sys
+import traceback
 from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
@@ -27,11 +30,46 @@ logger = logging.getLogger(__name__)
 
 # Settings file lives next to the Python package (portable)
 _SETTINGS_FILE = Path(__file__).resolve().parent.parent / "user_settings.json"
+_LOG_FILE = Path(__file__).resolve().parent.parent / "cfdtwin.log"
+_FAULT_FILE = Path(__file__).resolve().parent.parent / "cfdtwin_fault.log"
+
+
+def _install_crash_handlers():
+    """Capture three classes of crash info:
+      1. faulthandler — segfaults / interpreter crashes (Python, gRPC, TF, etc.)
+      2. sys.excepthook — unhandled Python exceptions (full traceback)
+      3. RotatingFileHandler — durable log file the user can grep after the fact
+    """
+    # Rotating file log (5 MB x 3 backups) so the log doesn't grow unbounded.
+    fmt = logging.Formatter("%(asctime)s  %(levelname)-8s  %(name)s  %(message)s")
+    file_handler = logging.handlers.RotatingFileHandler(
+        _LOG_FILE, maxBytes=5_000_000, backupCount=3, encoding="utf-8",
+    )
+    file_handler.setFormatter(fmt)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(fmt)
+    logging.basicConfig(level=logging.INFO, handlers=[stream_handler, file_handler])
+
+    # faulthandler dumps native tracebacks (signal-safe) to a dedicated file —
+    # written even when the interpreter is in a bad state and can't run pure Python.
+    fault_fp = open(_FAULT_FILE, "a", encoding="utf-8", buffering=1)
+    fault_fp.write(f"\n=== faulthandler enabled at startup ===\n")
+    faulthandler.enable(file=fault_fp)
+
+    # Catch unhandled Python exceptions and log them with traceback before exit.
+    def _on_unhandled(exc_type, exc_value, exc_tb):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_tb)
+            return
+        tb_str = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        logger.critical(f"UNHANDLED EXCEPTION:\n{tb_str}")
+    sys.excepthook = _on_unhandled
 
 
 def run():
     """Launch the application."""
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s")
+    _install_crash_handlers()
+    logger.info(f"CFDTwin starting. Log file: {_LOG_FILE}")
 
     app = QApplication(sys.argv)
     app.setStyleSheet(get_stylesheet())

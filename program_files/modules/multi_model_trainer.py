@@ -118,6 +118,10 @@ def load_training_data(dataset_dir, exclude_range=None):
         output_params_raw = json.load(f)
 
     # Support both new format {'outputs': [...]} and legacy {location: [fields]}
+    # Track each output's category so we can derive the dimensionality (1D/2D/3D)
+    # from user intent rather than point-count heuristics that misfire on sparse
+    # cell zones or dense surfaces.
+    output_categories = {}  # location -> 'Report Definition' | 'Surface' | 'Cell Zone'
     if 'outputs' in output_params_raw:
         output_params = {}
         for out in output_params_raw['outputs']:
@@ -126,6 +130,7 @@ def load_training_data(dataset_dir, exclude_range=None):
                 # Report defs store a single scalar as 'value'
                 fields = ['value']
             output_params[out['name']] = fields
+            output_categories[out['name']] = out.get('category', '')
     else:
         output_params = output_params_raw
 
@@ -205,7 +210,19 @@ def load_training_data(dataset_dir, exclude_range=None):
                 sample_file = np.load(output_files[0], allow_pickle=True)
                 if npz_key in sample_file.files:
                     sample_values = sample_file[npz_key]
-                    output_type, n_modes = detect_output_type(sample_values.shape)
+                    # Determine type from category (authoritative). Fall back to
+                    # n_points heuristic only if category is missing.
+                    category = output_categories.get(output_location, '')
+                    if category == 'Report Definition':
+                        output_type, n_modes = '1D', 0
+                    elif category == 'Surface':
+                        _, n_modes = detect_output_type(sample_values.shape)
+                        output_type = '2D'
+                    elif category == 'Cell Zone':
+                        _, n_modes = detect_output_type(sample_values.shape)
+                        output_type = '3D'
+                    else:
+                        output_type, n_modes = detect_output_type(sample_values.shape)
                     output_info[model_key] = {
                         'location': output_location,
                         'field': field_name,
@@ -371,9 +388,11 @@ def train_all_models(dataset_dir, model_name, model_selection=None,
         field_name = info['field']
         location = info['location']
 
-        # Skip outputs not in the filter (if provided)
-        if output_filter is not None and location not in output_filter:
-            logger.info(f"Skipping {location}_{field_name} (not in output filter)")
+        # Skip outputs not in the filter. The filter is matched against the
+        # model_key (f"{location}_{field}") so callers can target a single
+        # (location, field) pair when a location has multiple field_variables.
+        if output_filter is not None and output_key not in output_filter:
+            logger.info(f"Skipping {output_key} (not in output filter)")
             continue
 
         base_name = f"{location}_{field_name}"

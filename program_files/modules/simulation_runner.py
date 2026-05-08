@@ -289,14 +289,14 @@ def extract_coordinates(solver, setup_data, dataset_dir):
 
 def save_reference_coordinates(coord_data, dataset_dir):
     """Save coordinate reference file to dataset/coordinates.npz."""
-    coord_file = dataset_dir / "dataset" / "coordinates.npz"
+    coord_file = dataset_dir / "coordinates.npz"
     np.savez_compressed(coord_file, **coord_data)
     logger.info(f"Reference coordinates saved: {coord_file.name}")
 
 
 def load_reference_coordinates(dataset_dir):
     """Load coordinate reference file. Returns dict or None."""
-    coord_file = dataset_dir / "dataset" / "coordinates.npz"
+    coord_file = dataset_dir / "coordinates.npz"
     if not coord_file.exists():
         return None
     data = np.load(coord_file, allow_pickle=True)
@@ -509,7 +509,8 @@ def run_single_simulation(solver, setup_data, dataset_dir, sim_id, iterations=10
     return True, output_file
 
 
-def run_batch_simulations(solver, setup_data, dataset_dir, iterations=100, on_progress=None):
+def run_batch_simulations(solver, setup_data, dataset_dir, iterations=100,
+                          on_progress=None, on_iteration=None):
     """
     Run all DOE simulations in batch mode.
 
@@ -523,12 +524,13 @@ def run_batch_simulations(solver, setup_data, dataset_dir, iterations=100, on_pr
         logger.error("No DOE combinations found")
         return {'successful': 0, 'failed': 0, 'total': 0, 'elapsed': 0, 'stopped_reason': 'No DOE combinations'}
 
-    return _run_simulation_batch(solver, setup_data, dataset_dir, doe_list, iterations, on_progress)
+    return _run_simulation_batch(solver, setup_data, dataset_dir, doe_list, iterations,
+                                 on_progress=on_progress, on_iteration=on_iteration)
 
 
 def run_remaining_simulations(solver, setup_data, dataset_dir, iterations=100,
-                              on_progress=None, stop_flag=None, reinitialize=True,
-                              doe_samples=None):
+                              on_progress=None, on_iteration=None, stop_flag=None,
+                              reinitialize=True, doe_samples=None):
     """
     Run only uncompleted DOE simulations.
 
@@ -568,11 +570,13 @@ def run_remaining_simulations(solver, setup_data, dataset_dir, iterations=100,
 
     logger.info(f"Remaining: {len(remaining)}, Completed: {len(completed_ids)}")
     return _run_simulation_batch(solver, setup_data, dataset_dir, remaining, iterations,
-                                 on_progress, stop_flag, reinitialize)
+                                 on_progress=on_progress, on_iteration=on_iteration,
+                                 stop_flag=stop_flag, reinitialize=reinitialize)
 
 
 def _run_simulation_batch(solver, setup_data, dataset_dir, doe_list, iterations,
-                          on_progress=None, stop_flag=None, reinitialize=True):
+                          on_progress=None, on_iteration=None, stop_flag=None,
+                          reinitialize=True):
     """
     Core batch simulation loop.
 
@@ -580,6 +584,9 @@ def _run_simulation_batch(solver, setup_data, dataset_dir, doe_list, iterations,
     ----------
     on_progress : callable, optional
         Called as on_progress(idx, total, sim_id, status_str) for each simulation
+    on_iteration : callable, optional
+        Called as on_iteration(sim_id, current_iter, max_iter) after each Fluent
+        iteration completes. Implemented via PyFluent's SolverEvent.ITERATION_ENDED.
     stop_flag : callable, optional
         Returns True when the user requests a graceful stop.
     reinitialize : bool
@@ -641,15 +648,47 @@ def _run_simulation_batch(solver, setup_data, dataset_dir, doe_list, iterations,
         else:
             logger.debug("Continuing from previous solution")
 
+        # Register per-iteration callback for live progress reporting.
+        cb_id = None
+        if on_iteration is not None:
+            try:
+                from ansys.fluent.core import SolverEvent
+                iter_counter = [0]
+
+                def _iter_cb(session, event_info, _sid=sim_id):
+                    iter_counter[0] += 1
+                    try:
+                        on_iteration(_sid, iter_counter[0], iterations)
+                    except Exception:
+                        pass
+
+                cb_id = solver.events.register_callback(
+                    SolverEvent.ITERATION_ENDED, _iter_cb,
+                )
+            except Exception as e:
+                logger.debug(f"Iteration progress callback unavailable: {e}")
+                cb_id = None
+
         try:
             with suppress_fluent_output():
                 solver.settings.solution.run_calculation.iterate(iter_count=iterations)
         except Exception as e:
             logger.error(f"Solution failed: {e}")
+            if cb_id is not None:
+                try:
+                    solver.events.unregister_callback(cb_id)
+                except Exception:
+                    pass
             failed += 1
             if on_progress:
                 on_progress(idx, total, sim_id, 'failed')
             continue
+        finally:
+            if cb_id is not None:
+                try:
+                    solver.events.unregister_callback(cb_id)
+                except Exception:
+                    pass
 
         output_data = extract_field_data(solver, setup_data, dataset_dir)
         if output_data is None:

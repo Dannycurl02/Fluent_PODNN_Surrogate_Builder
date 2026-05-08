@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QFrame, QComboBox, QLineEdit,
     QFormLayout, QStackedWidget, QTableWidget, QTableWidgetItem,
-    QHeaderView, QMessageBox, QDoubleSpinBox, QScrollArea, QTabWidget,
+    QHeaderView, QMessageBox, QDoubleSpinBox, QScrollArea,
 )
 from PySide6.QtCore import Qt, Signal, QSize
 
@@ -44,6 +44,78 @@ except ImportError:
 # ============================================================
 # Plotting helpers
 # ============================================================
+
+def _make_per_sample_r2_figure(sim_ids, r2_values, title="Per-Sample R² (Test Set)"):
+    """Scatter of per-sample field-reconstruction R² for a 2D/3D model. One dot
+    per test sample, with a horizontal reference line at R²=1 (perfect)."""
+    sim_ids = np.asarray(sim_ids)
+    r2_values = np.asarray(r2_values, dtype=float)
+
+    fig = Figure(figsize=(7, 5), facecolor=theme.BG_PANEL, layout='constrained')
+    ax = fig.add_subplot(111)
+    ax.set_facecolor(theme.BG_DARK)
+    ax.tick_params(colors=theme.TEXT_SECONDARY)
+    for spine in ax.spines.values():
+        spine.set_color(theme.BORDER)
+
+    ax.axhline(1.0, linestyle='--', linewidth=1.0, color=theme.TEXT_SECONDARY,
+               label='R² = 1 (perfect)')
+    ax.scatter(sim_ids, r2_values, c=theme.ORANGE_LIGHT, s=50,
+               edgecolor='white', linewidth=0.5,
+               label=f'Test samples (n={len(sim_ids)})')
+
+    mean_r2 = float(np.mean(r2_values)) if len(r2_values) else 0.0
+    ax.set_title(f"{title}  (mean R² = {mean_r2:.4f})", color=theme.TEXT_PRIMARY)
+    ax.set_xlabel("Sample ID", color=theme.TEXT_SECONDARY)
+    ax.set_ylabel("R² (per-sample field reconstruction)", color=theme.TEXT_SECONDARY)
+    if len(r2_values):
+        lo = min(-0.3, float(r2_values.min()) - 0.25)
+        hi = max(1.3, float(r2_values.max()) + 0.2)
+    else:
+        lo, hi = -0.3, 1.3
+    ax.set_ylim(lo, hi)
+    ax.grid(True, linestyle='--', alpha=0.3, color=theme.BORDER)
+    ax.legend(loc='lower right', facecolor=theme.BG_DARK, edgecolor=theme.BORDER,
+              labelcolor=theme.TEXT_PRIMARY)
+    return fig
+
+
+def _make_pred_vs_truth_figure(truths, preds, title="Predicted vs Truth"):
+    """Scatter of NN predictions against ground truths for a 1D scalar model.
+    Adds a y=x diagonal reference and prints R² as the title suffix."""
+    truths = np.asarray(truths).flatten()
+    preds = np.asarray(preds).flatten()
+
+    fig = Figure(figsize=(7, 5), facecolor=theme.BG_PANEL, layout='constrained')
+    ax = fig.add_subplot(111)
+    ax.set_facecolor(theme.BG_DARK)
+    ax.tick_params(colors=theme.TEXT_SECONDARY)
+    for spine in ax.spines.values():
+        spine.set_color(theme.BORDER)
+
+    # Diagonal reference (perfect prediction)
+    lo = float(min(truths.min(), preds.min()))
+    hi = float(max(truths.max(), preds.max()))
+    pad = 0.05 * (hi - lo) if hi > lo else 1.0
+    ax.plot([lo - pad, hi + pad], [lo - pad, hi + pad],
+            linestyle='--', linewidth=1.2, color=theme.TEXT_SECONDARY, label='y = x')
+
+    ax.scatter(truths, preds, c=theme.ORANGE_LIGHT, s=40, edgecolor='white',
+               linewidth=0.5, label=f'Test set (n={len(truths)})')
+
+    ss_res = np.sum((truths - preds) ** 2)
+    ss_tot = np.sum((truths - truths.mean()) ** 2)
+    r2 = 1 - ss_res / ss_tot if ss_tot != 0 else 0.0
+    ax.set_title(f"{title}  (R² = {r2:.4f})", color=theme.TEXT_PRIMARY)
+    ax.set_xlabel("Ground Truth", color=theme.TEXT_SECONDARY)
+    ax.set_ylabel("NN Prediction", color=theme.TEXT_SECONDARY)
+    ax.set_xlim(lo - pad, hi + pad)
+    ax.set_ylim(lo - pad, hi + pad)
+    ax.grid(True, linestyle='--', alpha=0.3, color=theme.BORDER)
+    ax.legend(loc='best', facecolor=theme.BG_DARK, edgecolor=theme.BORDER,
+              labelcolor=theme.TEXT_PRIMARY)
+    return fig
+
 
 def _make_scalar_bar_figure(nn_val, fluent_val, truth_val, label):
     """Bar chart for 1D scalar comparison. Missing values skipped."""
@@ -105,11 +177,17 @@ def _downsample(n_points, max_points):
 
 
 def _make_field_figure(nn_values, truth_values, coordinates=None, title="Field",
-                        max_points=5000):
+                        max_points=5000, is_3d=False):
     """
     Horizontal 1x3 figure for 2D/3D field comparison: NN | Truth | Abs Error.
     NN/Truth share a colorbar; Error has its own.
     If only NN is available, shows just that panel.
+
+    is_3d : bool
+        Drives whether each panel uses a 3D scatter or a 2D scatter (auto-picking
+        the two widest coordinate dims). Caller supplies this from the model's
+        metadata `output_type` — geometry-based inference fails for 2D fields
+        embedded in 3D space (e.g. tilted mid-plane surfaces).
 
     Large fields are randomly downsampled to max_points for faster rendering
     and interactivity.
@@ -128,7 +206,6 @@ def _make_field_figure(nn_values, truth_values, coordinates=None, title="Field",
         if truth_values is not None and len(truth_values) == n_full:
             truth_values = truth_values[idx]
 
-    is_3d = _is_3d_data(coordinates)
     # Use constrained_layout so colorbars get their own space automatically
     fig = Figure(figsize=(13, 4.5), facecolor=theme.BG_PANEL, layout='constrained')
 
@@ -193,8 +270,13 @@ def _style_colorbar(cb):
 
 
 def _make_single_field_figure(values, coordinates=None, title="Field",
-                               cmap='viridis', max_points=300):
-    """Single-panel figure for one field (NN, Truth, or Error) in a pop-out window."""
+                               cmap='viridis', max_points=300, is_3d=False):
+    """Single-panel figure for one field (NN, Truth, or Error) in a pop-out window.
+
+    is_3d : bool
+        Caller supplies from metadata. See _make_field_figure for why we don't
+        infer this from coordinates.
+    """
     values = np.asarray(values).flatten()
     coordinates = np.asarray(coordinates) if coordinates is not None else None
     n_full = len(values)
@@ -203,7 +285,6 @@ def _make_single_field_figure(values, coordinates=None, title="Field",
         values = values[idx]
         coordinates = coordinates[idx]
 
-    is_3d = _is_3d_data(coordinates)
     fig = Figure(figsize=(8, 6), facecolor=theme.BG_PANEL, layout='constrained')
 
     if is_3d:
@@ -303,29 +384,6 @@ def _plot_field(ax, values, coordinates, title, cmap='viridis',
 
 
 # ============================================================
-# Model list item widget (checkbox + label)
-# ============================================================
-
-class ModelListItem(QWidget):
-    """Row widget with a checkbox + a multi-line label for the model list."""
-
-    def __init__(self, display_text, checked=True, parent=None):
-        super().__init__(parent)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(8)
-
-        from PySide6.QtWidgets import QCheckBox
-        self.checkbox = QCheckBox()
-        self.checkbox.setChecked(checked)
-        layout.addWidget(self.checkbox)
-
-        self.label = QLabel(display_text)
-        self.label.setWordWrap(False)
-        layout.addWidget(self.label, 1)
-
-
-# ============================================================
 # Validate page
 # ============================================================
 
@@ -341,7 +399,6 @@ class ValidatePage(QWidget):
             project.fluent_cache_dir, project.fluent_cache_index_file)
         self._worker = None
         self._models_meta = {}      # name -> metadata dict
-        self._model_widgets = {}    # name -> ModelListItem
         self._current_model = None  # focused model name
         self._last_fluent_data = None  # dict of NPZ keys -> arrays from last comparison run
 
@@ -355,7 +412,7 @@ class ValidatePage(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
 
-        title = QLabel("Validate")
+        title = QLabel("Analyze")
         font = title.font()
         font.setPointSize(16)
         font.setBold(True)
@@ -363,39 +420,100 @@ class ValidatePage(QWidget):
         layout.addWidget(title)
         layout.addSpacing(8)
 
-        # --- Model list header ---
+        # --- Top row: model list (left) + metrics table (right) ---
+        top_row = QHBoxLayout()
+        top_row.setSpacing(12)
+
+        # Left column: model list with its header
+        left_col = QVBoxLayout()
         list_row = QHBoxLayout()
         list_label = QLabel("Trained Models")
         list_label.setProperty("secondary", True)
         list_row.addWidget(list_label)
         list_row.addStretch()
 
+        self._export_btn = QPushButton("Export Model")
+        self._export_btn.setProperty("flat", True)
+        self._export_btn.setFixedWidth(160)
+        self._export_btn.clicked.connect(self._export_model)
+        list_row.addWidget(self._export_btn)
+
         self._delete_btn = QPushButton("Delete Model")
         self._delete_btn.setProperty("flat", True)
-        self._delete_btn.setFixedWidth(120)
+        self._delete_btn.setFixedWidth(160)
         self._delete_btn.clicked.connect(self._delete_model)
         list_row.addWidget(self._delete_btn)
-        layout.addLayout(list_row)
+        left_col.addLayout(list_row)
 
         self._model_list = QListWidget()
         self._model_list.setSpacing(2)
         self._model_list.itemClicked.connect(self._on_model_clicked)
-        layout.addWidget(self._model_list, 1)
+        left_col.addWidget(self._model_list, 1)
+        top_row.addLayout(left_col, 1)
 
-        # --- Dashboard (shown when a model is focused) ---
-        self._dashboard = QFrame()
-        self._dashboard.setProperty("panel", True)
-        dash_layout = QVBoxLayout(self._dashboard)
-        dash_layout.setContentsMargins(16, 16, 16, 16)
+        # Right column: metrics for the focused model
+        right_col = QVBoxLayout()
+        metrics_label = QLabel("Metrics")
+        metrics_label.setProperty("secondary", True)
+        right_col.addWidget(metrics_label)
 
-        # Metrics table
         self._metrics_table = QTableWidget()
         self._metrics_table.setColumnCount(2)
         self._metrics_table.setHorizontalHeaderLabels(["Metric", "Value"])
         self._metrics_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self._metrics_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self._metrics_table.setMaximumHeight(160)
-        dash_layout.addWidget(self._metrics_table)
+        right_col.addWidget(self._metrics_table, 1)
+        top_row.addLayout(right_col, 1)
+
+        layout.addLayout(top_row, 1)
+        layout.addSpacing(8)
+
+        # --- Middle row: training history (left) | per-model validation plot (right) ---
+        self._mid_frame = QFrame()
+        self._mid_frame.setProperty("panel", True)
+        mid_outer = QHBoxLayout(self._mid_frame)
+        mid_outer.setContentsMargins(8, 8, 8, 8)
+        mid_outer.setSpacing(8)
+
+        # Left: training loss curve PNG
+        loss_col = QVBoxLayout()
+        loss_caption = QLabel("Training Loss — Click to expand")
+        loss_caption.setProperty("secondary", True)
+        loss_caption.setAlignment(Qt.AlignCenter)
+        loss_col.addWidget(loss_caption)
+        self._loss_png_label = QLabel("Select a model to see its loss curve.")
+        self._loss_png_label.setAlignment(Qt.AlignCenter)
+        self._loss_png_label.setMinimumHeight(180)
+        self._loss_png_label.setStyleSheet(f"background: {theme.BG_DARK}; border: 1px solid {theme.BORDER};")
+        loss_col.addWidget(self._loss_png_label, 1)
+        mid_outer.addLayout(loss_col, 1)
+
+        # Right: pred-vs-truth (1D) or per-sample R² (2D/3D)
+        pvt_col = QVBoxLayout()
+        self._pvt_caption = QLabel("Test Set Validation")
+        self._pvt_caption.setProperty("secondary", True)
+        self._pvt_caption.setAlignment(Qt.AlignCenter)
+        pvt_col.addWidget(self._pvt_caption)
+        # Container we swap canvases into when a model is focused.
+        self._pvt_container = QFrame()
+        self._pvt_container.setStyleSheet(f"background: {theme.BG_DARK}; border: 1px solid {theme.BORDER};")
+        self._pvt_layout = QVBoxLayout(self._pvt_container)
+        self._pvt_layout.setContentsMargins(0, 0, 0, 0)
+        self._pvt_placeholder = QLabel("Select a model to compute test-set validation.")
+        self._pvt_placeholder.setAlignment(Qt.AlignCenter)
+        self._pvt_layout.addWidget(self._pvt_placeholder)
+        pvt_col.addWidget(self._pvt_container, 1)
+        mid_outer.addLayout(pvt_col, 1)
+
+        self._mid_frame.hide()
+        layout.addWidget(self._mid_frame, 1)
+        layout.addSpacing(8)
+
+        # --- Dashboard (lower section: mode, params, action buttons, results tabs) ---
+        self._dashboard = QFrame()
+        self._dashboard.setProperty("panel", True)
+        dash_layout = QVBoxLayout(self._dashboard)
+        dash_layout.setContentsMargins(16, 16, 16, 16)
 
         # Prediction mode row
         mode_row = QHBoxLayout()
@@ -466,12 +584,28 @@ class ValidatePage(QWidget):
         dash_layout.addLayout(btn_row)
 
         # Results tab widget (one tab per model after predict)
-        self._results_tabs = QTabWidget()
-        self._results_tabs.setMinimumHeight(360)
-        dash_layout.addWidget(self._results_tabs, 1)
+        # Single result area — replaces a per-model tab strip. Tracks the
+        # focused model only (no separate selector).
+        self._results_container = QFrame()
+        self._results_container_layout = QVBoxLayout(self._results_container)
+        self._results_container_layout.setContentsMargins(0, 0, 0, 0)
+        self._results_placeholder = QLabel(
+            "Click Predict to compute predictions for the focused model."
+        )
+        self._results_placeholder.setProperty("secondary", True)
+        self._results_placeholder.setAlignment(Qt.AlignCenter)
+        self._results_container_layout.addWidget(self._results_placeholder)
+        dash_layout.addWidget(self._results_container, 1)
 
+        # Dashboard stays visible whenever any model exists; refresh() auto-focuses
+        # the first model so the user lands on a populated dashboard.
+        # 50/50 vertical split with the top row (model list + metrics).
         self._dashboard.hide()
-        layout.addWidget(self._dashboard, 2)
+        layout.addWidget(self._dashboard, 1)
+        self._empty_label = QLabel("No trained models yet. Train a model to see metrics here.")
+        self._empty_label.setProperty("secondary", True)
+        self._empty_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self._empty_label, 1)
 
     # ------------------------------------------------------------
     # Refresh
@@ -481,7 +615,6 @@ class ValidatePage(QWidget):
         """Reload model list from disk."""
         self._model_list.clear()
         self._models_meta.clear()
-        self._model_widgets.clear()
 
         if not self.project.models_dir.exists():
             self._update_cache_label()
@@ -514,15 +647,11 @@ class ValidatePage(QWidget):
             if stale:
                 display += "    [STALE]"
 
-            row_widget = ModelListItem(display, checked=True)
-            item = QListWidgetItem()
+            item = QListWidgetItem(display)
             item.setData(Qt.UserRole, name)
-            item.setSizeHint(row_widget.sizeHint())
             self._model_list.addItem(item)
-            self._model_list.setItemWidget(item, row_widget)
 
             self._models_meta[name] = meta
-            self._model_widgets[name] = row_widget
 
         # Populate dataset point combo
         self._dataset_combo.clear()
@@ -530,6 +659,19 @@ class ValidatePage(QWidget):
             self._dataset_combo.addItem(f"Sample {sid}", sid)
 
         self._update_cache_label()
+
+        # Auto-focus the first model so the dashboard is ready on tab open.
+        if self._model_list.count() > 0:
+            first = self._model_list.item(0)
+            self._model_list.setCurrentItem(first)
+            first_name = first.data(Qt.UserRole)
+            if first_name:
+                self._focus_model(first_name)
+                self._empty_label.hide()
+        else:
+            self._mid_frame.hide()
+            self._dashboard.hide()
+            self._empty_label.show()
 
     def _update_cache_label(self):
         n = self.fluent_cache.count()
@@ -540,24 +682,24 @@ class ValidatePage(QWidget):
     # ------------------------------------------------------------
 
     def _on_model_clicked(self, item):
-        """Click focuses a model AND checks its checkbox."""
+        """Click focuses a model — Predict targets whichever is focused."""
         name = item.data(Qt.UserRole)
-        if not name:
-            return
-
-        # Auto-check when clicked
-        widget = self._model_widgets.get(name)
-        if widget:
-            widget.checkbox.setChecked(True)
-
-        self._focus_model(name)
+        if name:
+            self._focus_model(name)
 
     def _focus_model(self, name):
         """Show metrics dashboard for this model."""
         self._current_model = name
         meta = self._models_meta.get(name, {})
+        self._empty_label.hide()
+        self._mid_frame.show()
         self._dashboard.show()
-        self._model_list.setMaximumHeight(200)
+        self._refresh_middle_section(name, meta)
+        # Clear stale prediction output — predictions belong to a (model, params)
+        # pair and switching focus invalidates them.
+        self._show_result_message(
+            "Click Predict to compute predictions for the focused model."
+        )
 
         # Metrics
         test_metrics = meta.get('test_metrics', {})
@@ -587,17 +729,6 @@ class ValidatePage(QWidget):
             self._metrics_table.setItem(i, 1, QTableWidgetItem(v))
 
         self._build_custom_param_inputs()
-
-    def _get_checked_models(self):
-        """Return list of model names that are checked."""
-        checked = []
-        for i in range(self._model_list.count()):
-            item = self._model_list.item(i)
-            name = item.data(Qt.UserRole)
-            widget = self._model_widgets.get(name)
-            if widget and widget.checkbox.isChecked():
-                checked.append(name)
-        return checked
 
     # ------------------------------------------------------------
     # Prediction mode
@@ -662,9 +793,9 @@ class ValidatePage(QWidget):
     # ------------------------------------------------------------
 
     def _run_predict(self):
-        checked = self._get_checked_models()
-        if not checked:
-            QMessageBox.warning(self, "No Models", "Check at least one model.")
+        name = self._current_model
+        if not name:
+            QMessageBox.warning(self, "No Model", "Select a model in the list first.")
             return
 
         params, sim_id = self._get_current_params()
@@ -698,47 +829,49 @@ class ValidatePage(QWidget):
             logger.info("Found cached Fluent data for these params")
         self._last_fluent_data = cached_fluent
 
-        # Clear existing tabs
-        self._results_tabs.clear()
-
         from ...modules.multi_model_visualizer import predict_single_model, predict_dataset_point_single
         from ...modules.doe_setup import load_doe_samples
 
         doe_samples, _ = load_doe_samples(self.project.doe_samples_file)
+        model_dir = self.project.models_dir / name
+        try:
+            if sim_id is not None:
+                result = predict_dataset_point_single(
+                    model_dir, self.project.dataset_dir, doe_samples, sim_id)
+            else:
+                result = predict_single_model(model_dir, X)
+        except Exception as e:
+            logger.error(f"Prediction failed for {name}: {e}")
+            self._show_result_message(f"Error: {e}", error=True)
+            return
 
-        for name in checked:
-            model_dir = self.project.models_dir / name
-            try:
-                if sim_id is not None:
-                    result = predict_dataset_point_single(
-                        model_dir, self.project.dataset_dir, doe_samples, sim_id)
-                else:
-                    result = predict_single_model(model_dir, X)
-            except Exception as e:
-                logger.error(f"Prediction failed for {name}: {e}")
-                self._add_error_tab(name, str(e))
-                continue
+        if result is None:
+            self._show_result_message("Prediction returned None", error=True)
+            return
 
-            if result is None:
-                self._add_error_tab(name, "Prediction returned None")
-                continue
+        self._show_result(name, result, cached_fluent)
 
-            self._add_result_tab(name, result, cached_fluent)
+    def _clear_results_container(self):
+        while self._results_container_layout.count():
+            item = self._results_container_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
 
-        if self._results_tabs.count() > 0:
-            self._results_tabs.setCurrentIndex(0)
-
-    def _add_error_tab(self, name, msg):
-        label = QLabel(f"Error: {msg}")
+    def _show_result_message(self, msg, error=False):
+        self._clear_results_container()
+        label = QLabel(msg)
         label.setAlignment(Qt.AlignCenter)
-        label.setStyleSheet(f"color: {theme.RED_ERROR}; background: transparent;")
-        self._results_tabs.addTab(label, name)
+        if error:
+            label.setStyleSheet(f"color: {theme.RED_ERROR}; background: transparent;")
+        else:
+            label.setProperty("secondary", True)
+        label.setWordWrap(True)
+        self._results_container_layout.addWidget(label)
 
-    def _add_result_tab(self, name, result, fluent_data):
-        """Add a tab showing prediction results for a single model."""
+    def _show_result(self, name, result, fluent_data):
+        """Render the prediction result for a single (focused) model."""
         meta = result['metadata']
         output_type = meta.get('output_type', '1D')
-        output_key = meta.get('output_key', '')
         npz_key = meta.get('npz_key', '')
 
         nn_pred = np.asarray(result['prediction'])
@@ -755,14 +888,14 @@ class ValidatePage(QWidget):
         else:
             widget = self._build_field_result_widget(name, result, nn_pred, truth, fluent_vals)
 
-        self._results_tabs.addTab(widget, name)
+        self._clear_results_container()
+        self._results_container_layout.addWidget(widget)
 
     def _build_scalar_result_widget(self, name, result, nn_pred, truth, fluent_vals):
         container = QWidget()
         layout = QVBoxLayout(container)
         layout.setContentsMargins(8, 8, 8, 8)
 
-        # Summary row
         meta = result['metadata']
         field_label = meta.get('field_name', 'value')
         nn_val = float(np.asarray(nn_pred).flatten()[0])
@@ -779,31 +912,53 @@ class ValidatePage(QWidget):
             pct = 100 * err / abs(fluent_val) if fluent_val != 0 else 0
             text += f"<br><b>Fluent:</b> {fluent_val:.6g}  (abs err {err:.4g}, {pct:.2f}%)"
 
-        summary_row = QHBoxLayout()
         summary = QLabel(text)
         summary.setTextFormat(Qt.RichText)
         summary.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent; padding: 8px;")
-        summary_row.addWidget(summary, 1)
+        layout.addWidget(summary)
 
         if HAS_MATPLOTLIB:
-            def build_fig():
-                return _make_scalar_bar_figure(nn_val, fluent_val, truth_val, field_label)
+            self._add_plot_results_buttons(layout, [
+                ("Bar Chart",
+                 lambda: self._open_plot_window(
+                     f"{name} — Bar",
+                     lambda: _make_scalar_bar_figure(nn_val, fluent_val, truth_val, field_label),
+                 )),
+                ("Predicted vs Truth (Test Set)",
+                 lambda: self._open_pred_vs_truth_window(name)),
+            ])
 
-            popout_btn = QPushButton("Open in new window")
-            popout_btn.setProperty("flat", True)
-            popout_btn.setFixedHeight(28)
-            popout_btn.clicked.connect(
-                lambda: self._open_plot_window(name, build_fig)
-            )
-            summary_row.addWidget(popout_btn, 0, Qt.AlignTop)
-        layout.addLayout(summary_row)
-
-        if HAS_MATPLOTLIB:
-            fig = build_fig()
-            canvas = FigureCanvasQTAgg(fig)
-            layout.addWidget(canvas, 1)
-
+        layout.addStretch()
         return container
+
+    def _add_plot_results_buttons(self, parent_layout, buttons):
+        """Add a centered, headlined row of plot-action buttons to a tab layout.
+
+        buttons : list of (label, callback) pairs.
+        """
+        header = QLabel("Plot Results")
+        f = header.font()
+        f.setPointSize(13)
+        f.setBold(True)
+        header.setFont(f)
+        header.setAlignment(Qt.AlignCenter)
+        header.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; padding-top: 12px;")
+        parent_layout.addWidget(header)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(12)
+        btn_row.addStretch()
+        for label, cb in buttons:
+            btn = QPushButton(label)
+            btn.setFixedHeight(46)
+            btn.setMinimumWidth(180)
+            btn_font = btn.font()
+            btn_font.setPointSize(11)
+            btn.setFont(btn_font)
+            btn.clicked.connect(cb)
+            btn_row.addWidget(btn)
+        btn_row.addStretch()
+        parent_layout.addLayout(btn_row)
 
     def _build_field_result_widget(self, name, result, nn_pred, truth, fluent_vals):
         container = QWidget()
@@ -812,6 +967,12 @@ class ValidatePage(QWidget):
 
         meta = result['metadata']
         output_key = meta.get('output_key', '')
+        # Resolve 2D-vs-3D from the output's category in output_parameters.json
+        # rather than the trained model's stored output_type — the trainer's
+        # n_points-based detection misclassifies sparse cell zones as '2D'.
+        # Geometry-based inference also fails (a tilted 2D surface has non-trivial
+        # Z span). Category is the authoritative truth.
+        is_3d = self._is_3d_from_metadata(meta)
 
         # Metrics summary
         info_parts = [f"<b>{meta.get('field_name', 'value')}</b> @ {meta.get('location', '?')}"]
@@ -824,7 +985,7 @@ class ValidatePage(QWidget):
             err = np.abs(nn_pred.flatten() - fluent_vals.flatten())
             info_parts.append(f"Fluent MAE {np.mean(err):.4g}  Max err {np.max(err):.4g}")
 
-        # Plot — prefer Fluent as truth if we have both
+        # Prefer Fluent as truth for plots if we have both
         compare_vals = fluent_vals if fluent_vals is not None else truth
         coords = self._load_coordinates_for(meta)
 
@@ -834,70 +995,232 @@ class ValidatePage(QWidget):
         layout.addWidget(summary)
 
         if HAS_MATPLOTLIB:
-            # Combined tri-plot in the tab
-            def build_tri():
-                return _make_field_figure(
-                    nn_pred, compare_vals, coords, title=output_key,
-                    max_points=self._downsample_spin.value(),
-                )
-
-            fig = build_tri()
-            canvas = FigureCanvasQTAgg(fig)
-            toolbar = NavigationToolbar2QT(canvas, container)
-            toolbar.setStyleSheet(f"background: {theme.BG_PANEL}; color: {theme.TEXT_PRIMARY};")
-            layout.addWidget(toolbar)
-            layout.addWidget(canvas, 1)
-
-            # Individual pop-out buttons
-            btn_row = QHBoxLayout()
-            btn_row.addStretch()
-
             def _make_single_fig(values, title_str, cmap='viridis'):
                 return _make_single_field_figure(
                     values, coords, title=title_str, cmap=cmap,
-                    max_points=self._downsample_spin.value(),
+                    max_points=self._downsample_spin.value(), is_3d=is_3d,
                 )
 
-            nn_btn = QPushButton("NN")
-            nn_btn.setProperty("flat", True)
-            nn_btn.setFixedHeight(26)
-            nn_btn.clicked.connect(
+            buttons = []
+            if compare_vals is not None:
+                buttons.append((
+                    "Triplot (NN | Truth | Error)",
+                    lambda: self._open_plot_window(
+                        f"{name} — Triplot",
+                        lambda: _make_field_figure(
+                            nn_pred, compare_vals, coords, title=output_key,
+                            max_points=self._downsample_spin.value(), is_3d=is_3d,
+                        ),
+                    ),
+                ))
+            buttons.append((
+                "NN",
                 lambda: self._open_plot_window(
                     f"{name} — NN",
-                    lambda: _make_single_fig(nn_pred, "NN Prediction")
-                )
-            )
-            btn_row.addWidget(nn_btn)
-
+                    lambda: _make_single_fig(nn_pred, "NN Prediction"),
+                ),
+            ))
             if compare_vals is not None:
-                truth_btn = QPushButton("Truth")
-                truth_btn.setProperty("flat", True)
-                truth_btn.setFixedHeight(26)
-                truth_btn.clicked.connect(
+                buttons.append((
+                    "Truth",
                     lambda: self._open_plot_window(
                         f"{name} — Truth",
-                        lambda: _make_single_fig(compare_vals, "Truth")
-                    )
-                )
-                btn_row.addWidget(truth_btn)
-
-                err_btn = QPushButton("Error")
-                err_btn.setProperty("flat", True)
-                err_btn.setFixedHeight(26)
+                        lambda: _make_single_fig(compare_vals, "Truth"),
+                    ),
+                ))
                 err_vals = np.abs(nn_pred.flatten() - np.asarray(compare_vals).flatten())
-                err_btn.clicked.connect(
+                buttons.append((
+                    "Error",
                     lambda: self._open_plot_window(
                         f"{name} — Error",
-                        lambda: _make_single_fig(err_vals, "Absolute Error", cmap='Reds')
-                    )
-                )
-                btn_row.addWidget(err_btn)
+                        lambda: _make_single_fig(err_vals, "Absolute Error", cmap='Reds'),
+                    ),
+                ))
 
-            layout.addLayout(btn_row)
+            self._add_plot_results_buttons(layout, buttons)
         else:
             layout.addWidget(QLabel("matplotlib not available"))
 
+        layout.addStretch()
         return container
+
+    # ------------------------------------------------------------
+    # Middle row: loss curve PNG + per-model test-set validation plot
+    # ------------------------------------------------------------
+
+    def _refresh_middle_section(self, model_name, meta):
+        """Update the loss-curve image and the test-set validation plot for the
+        focused model. Both fail gracefully — placeholder text on error."""
+        self._update_loss_png(model_name, meta)
+        self._update_test_set_plot(model_name, meta)
+
+    def _update_loss_png(self, model_name, meta):
+        from PySide6.QtGui import QPixmap
+        model_dir = self.project.models_dir / model_name
+        # Trainer saves loss curves as <output_model_name>_loss_curve.png.
+        # output_model_name lives in metadata; fall back to a glob if missing.
+        candidate = model_dir / f"{meta.get('model_name', '')}_loss_curve.png"
+        if not candidate.exists():
+            pngs = list(model_dir.glob("*_loss_curve.png"))
+            candidate = pngs[0] if pngs else None
+        if candidate is None or not candidate.exists():
+            self._loss_png_label.setPixmap(QPixmap())
+            self._loss_png_label.setText("No loss curve PNG found.")
+            self._loss_png_path = None
+            self._loss_png_label.setCursor(Qt.ArrowCursor)
+            self._loss_png_label.mousePressEvent = lambda _ev: None
+            return
+        pix = QPixmap(str(candidate))
+        if pix.isNull():
+            self._loss_png_label.setText(f"Couldn't load image: {candidate.name}")
+            self._loss_png_path = None
+            self._loss_png_label.setCursor(Qt.ArrowCursor)
+            self._loss_png_label.mousePressEvent = lambda _ev: None
+            return
+        # Scale to fit the label width; preserve aspect.
+        max_w = max(self._loss_png_label.width() - 8, 200)
+        max_h = max(self._loss_png_label.height() - 8, 150)
+        self._loss_png_label.setPixmap(pix.scaled(max_w, max_h, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        self._loss_png_label.setToolTip("Click to expand")
+        self._loss_png_label.setCursor(Qt.PointingHandCursor)
+        self._loss_png_path = str(candidate)
+        self._loss_png_label.mousePressEvent = (
+            lambda _ev, p=str(candidate), n=model_name: self._open_loss_png_window(p, n)
+        )
+
+    def _open_loss_png_window(self, png_path, model_name):
+        """Pop the loss curve PNG in a resizable window at full resolution."""
+        from PySide6.QtGui import QPixmap
+        from PySide6.QtWidgets import QDialog, QVBoxLayout as _VLayout
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"{model_name} — Training Loss")
+        dlg.resize(900, 600)
+        v = _VLayout(dlg)
+        v.setContentsMargins(8, 8, 8, 8)
+
+        pix = QPixmap(png_path)
+        label = QLabel()
+        label.setAlignment(Qt.AlignCenter)
+        label.setStyleSheet(f"background: {theme.BG_DARK};")
+        label.setPixmap(pix.scaled(880, 580, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        v.addWidget(label, 1)
+
+        dlg.setModal(False)
+        dlg.show()
+        if not hasattr(self, '_plot_windows'):
+            self._plot_windows = []
+        self._plot_windows.append(dlg)
+        dlg.finished.connect(lambda _: self._plot_windows.remove(dlg) if dlg in self._plot_windows else None)
+
+    def _update_test_set_plot(self, model_name, meta):
+        # Clear existing canvas/widget
+        while self._pvt_layout.count():
+            item = self._pvt_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        if not HAS_MATPLOTLIB:
+            placeholder = QLabel("matplotlib not available")
+            placeholder.setAlignment(Qt.AlignCenter)
+            self._pvt_layout.addWidget(placeholder)
+            return
+
+        try:
+            from ...modules.multi_model_visualizer import predict_test_set
+            model_dir = self.project.models_dir / model_name
+            summary_file = model_dir / "training_summary.json"
+            result = predict_test_set(
+                model_dir,
+                self.project.dataset_dir,
+                self.project.doe_samples_file,
+                summary_file,
+            )
+        except Exception as e:
+            placeholder = QLabel(f"Test-set validation unavailable:\n{e}")
+            placeholder.setAlignment(Qt.AlignCenter)
+            placeholder.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; padding: 12px;")
+            placeholder.setWordWrap(True)
+            self._pvt_layout.addWidget(placeholder)
+            return
+
+        truths = np.asarray(result['truths'])
+        preds = np.asarray(result['predictions'])
+        sim_ids = result['sim_ids']
+
+        is_3d = self._is_3d_from_metadata(meta)
+        is_field = (meta.get('output_type') in ('2D', '3D')) or (truths.shape[1] > 1) or is_3d
+
+        if is_field:
+            # Per-sample R² across the test set (option (i)).
+            r2_values = []
+            for i in range(truths.shape[0]):
+                t = truths[i].flatten()
+                p = preds[i].flatten()
+                ss_res = float(np.sum((t - p) ** 2))
+                ss_tot = float(np.sum((t - t.mean()) ** 2))
+                r2 = 1.0 - ss_res / ss_tot if ss_tot != 0 else 0.0
+                r2_values.append(r2)
+            self._pvt_caption.setText("Per-Sample R² (Test Set) — click to expand")
+            popup_title = f"{model_name} — Per-Sample R² (Test Set)"
+            def _builder(_sim_ids=list(sim_ids), _r2=list(r2_values), _name=model_name):
+                return _make_per_sample_r2_figure(_sim_ids, _r2, title=_name)
+        else:
+            self._pvt_caption.setText("Predicted vs Ground Truth (Test Set) — click to expand")
+            popup_title = f"{model_name} — Predicted vs Truth (Test Set)"
+            _truths_flat = truths.flatten()
+            _preds_flat = preds.flatten()
+            def _builder(_t=_truths_flat, _p=_preds_flat, _name=model_name):
+                return _make_pred_vs_truth_figure(_t, _p, title=_name)
+
+        fig = _builder()
+        canvas = FigureCanvasQTAgg(fig)
+        canvas.setCursor(Qt.PointingHandCursor)
+        # Click on the canvas opens the same plot in a resizable popout.
+        canvas.mousePressEvent = lambda _ev, t=popup_title, b=_builder: self._open_plot_window(t, b)
+        self._pvt_layout.addWidget(canvas)
+
+    def _is_3d_from_metadata(self, meta):
+        """Decide if a model's field is 3D using output_parameters.json's category
+        (Cell Zone = 3D, Surface = 2D), falling back to the model's stored
+        output_type if the category lookup fails."""
+        location = meta.get('location')
+        if location and self.project.output_parameters_file.exists():
+            try:
+                with open(self.project.output_parameters_file, 'r') as f:
+                    out_data = json.load(f)
+                for out in out_data.get('outputs', []):
+                    if out.get('name') == location:
+                        category = out.get('category', '')
+                        if category == 'Cell Zone':
+                            return True
+                        if category in ('Surface', 'Report Definition'):
+                            return False
+            except Exception:
+                pass
+        return meta.get('output_type') == '3D'
+
+    def _open_pred_vs_truth_window(self, model_name):
+        """Build and pop out a Predicted-vs-Truth scatter for a 1D scalar model
+        across the test set saved in training_summary.json."""
+        from ...modules.multi_model_visualizer import predict_test_set
+        model_dir = self.project.models_dir / model_name
+        summary_file = model_dir / "training_summary.json"
+
+        def _build():
+            result = predict_test_set(
+                model_dir,
+                self.project.dataset_dir,
+                self.project.doe_samples_file,
+                summary_file,
+            )
+            if result is None:
+                raise RuntimeError("predict_test_set returned None")
+            return _make_pred_vs_truth_figure(
+                result['truths'], result['predictions'],
+                title=f"{model_name} — Test Set",
+            )
+
+        self._open_plot_window(f"{model_name} — Predicted vs Truth", _build)
 
     def _open_plot_window(self, title, fig_builder):
         """Open a resizable dialog containing a fresh canvas with the same plot."""
@@ -1034,6 +1357,48 @@ class ValidatePage(QWidget):
     # ------------------------------------------------------------
     # Delete
     # ------------------------------------------------------------
+
+    def _export_model(self):
+        """Copy the focused model's directory to a user-chosen location."""
+        import shutil
+        from PySide6.QtWidgets import QFileDialog
+        current = self._model_list.currentItem()
+        if not current:
+            QMessageBox.warning(self, "No Model", "Select a model to export.")
+            return
+        name = current.data(Qt.UserRole)
+        src_dir = self.project.models_dir / name
+        if not src_dir.exists():
+            QMessageBox.critical(self, "Export Failed", f"Source folder is missing:\n{src_dir}")
+            return
+
+        dest_parent = QFileDialog.getExistingDirectory(
+            self, "Choose where to save the model folder",
+        )
+        if not dest_parent:
+            return
+
+        dest = Path(dest_parent) / name
+        if dest.exists():
+            reply = QMessageBox.question(
+                self, "Overwrite?",
+                f"{dest} already exists. Overwrite it?",
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                return
+            try:
+                shutil.rmtree(dest)
+            except Exception as e:
+                QMessageBox.critical(self, "Export Failed", f"Couldn't remove existing folder:\n{e}")
+                return
+
+        try:
+            shutil.copytree(src_dir, dest)
+            logger.info(f"Exported model {name} to {dest}")
+            QMessageBox.information(self, "Export Complete", f"Model exported to:\n{dest}")
+        except Exception as e:
+            QMessageBox.critical(self, "Export Failed", f"Couldn't copy model:\n{e}")
 
     def _delete_model(self):
         current = self._model_list.currentItem()
