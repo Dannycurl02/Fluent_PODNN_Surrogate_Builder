@@ -38,18 +38,25 @@ install the `[gui]` extra rather than raising ImportError.
 
 ## Use the GUI
 
-Three ways to launch:
+**Installed via pip (`pip install cfdtwin[gui]`):** launch from any terminal.
 
 ```
-cfdtwin-gui                          # shell command, available after pip install
-python -m gui                        # from a repo clone
-double-click scripts/launch_gui.bat  # Windows; no terminal window
+cfdtwin-gui
+```
+
+**From a repo clone:** run as a module, or double-click the launcher script
+on Windows for a click-to-launch experience without a terminal window.
+
+```
+python -m gui                        # any platform
+double-click scripts/launch_gui.bat  # Windows
 ```
 
 To create a Desktop launcher on Windows: right-click `scripts/launch_gui.bat`
 → **Copy**, then right-click the Desktop → **Paste shortcut**. To set the
 CFDTwin icon, right-click the shortcut → Properties → Change Icon → browse
-to `gui/assets/logo_icon.png`.
+to `gui/assets/logo_icon.png`. (`scripts/launch_gui.bat` ships only in the
+repo; pip installs use the `cfdtwin-gui` command above.)
 
 On launch, select or create a project. Sidebar steps unlock as their
 prerequisites are met:

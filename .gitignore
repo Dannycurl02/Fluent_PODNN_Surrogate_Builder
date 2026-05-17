@@ -17,10 +17,11 @@ __pycache__/
 # Data and output files
 # Images
 *.png
-# ...but keep the brand logos: needed by the GUI at runtime, by the README
-# on GitHub/PyPI, and by the docs site.
 !gui/assets/*.png
 !docs/assets/*.png
+
+# Launch Scripts
+!scripts/launch_gui.bat
 
 # Model files (ignore H5 Keras models but allow NPZ inside dataset folders)
 *.h5
