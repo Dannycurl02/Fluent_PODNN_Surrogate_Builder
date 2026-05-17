@@ -633,7 +633,9 @@ class Project:
             coords_file = self._wp.dataset_dir / "coordinates.npz"
             if coords_file.exists():
                 npz = np.load(coords_file, allow_pickle=True)
-                coord_key = meta.npz_key  # "<location>|<field>"
+                # Coordinates are saved per-location (one set of points serves
+                # every field on that surface/zone), keyed "<location>|coordinates".
+                coord_key = f"{meta.location}|coordinates"
                 if coord_key in npz.files:
                     coords = np.asarray(npz[coord_key])
 
