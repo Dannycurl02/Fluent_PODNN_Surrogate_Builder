@@ -64,25 +64,7 @@ before v0.1.0 since the two-R² distinction trips up everyone.
 
 ---
 
-## R3. MkDocs palette — exact brand hex
-
-Material's named-color palette doesn't include the CFDTwin brand blues
-(`#1583B5` / `#1E5C79`) exactly — `mkdocs.yml` currently uses the closest
-named colors (`primary: blue` / `accent: light blue`). Pixel-perfect tuning
-to the brand hex needs an `extra_css` override:
-
-- Add `docs/stylesheets/extra.css` with `--md-primary-fg-color`,
-  `--md-primary-fg-color--light`, `--md-primary-fg-color--dark`, and
-  `--md-accent-fg-color` set to the brand hex.
-- Wire it via `extra_css:` in `mkdocs.yml`.
-- Verify in both `default` and `slate` schemes.
-
-Effort: ~30 min. Low priority — current colors are close enough that v0.1.0
-ships fine without this; do it when the site is live and you can eyeball it.
-
----
-
-## R4. Cut the v0.1.0 release
+## R3. Cut the v0.1.0 release
 
 Once R1 (API smoke) is green:
 
