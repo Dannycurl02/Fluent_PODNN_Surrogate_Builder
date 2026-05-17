@@ -1,0 +1,59 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cfdtwin"
+description = "Neural-network surrogate models for ANSYS Fluent simulations."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Danny Curl", email = "dannycurl02@gmail.com"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
+dynamic = ["version"]
+dependencies = [
+    "numpy",
+    "scipy",
+    "scikit-learn",
+    "tensorflow>=2.20,<2.21",
+    "matplotlib",
+    "ansys-fluent-core",
+    "PySide6",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-qt"]
+
+[project.scripts]
+# `cfdtwin-gui` becomes a real shell command after `pip install cfdtwin`.
+# Users can also double-click scripts/launch_gui.bat on Windows.
+cfdtwin-gui = "gui.app:run"
+
+[project.urls]
+Homepage = "https://github.com/UARK-NED3/CFDTwin"
+Issues = "https://github.com/UARK-NED3/CFDTwin/issues"
+
+[tool.hatch.version]
+path = "cfdtwin/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+# `gui` ships in the wheel so the cfdtwin-gui entry point resolves after
+# `pip install cfdtwin`. Its top-level name is awkward namespace-wise; see
+# BACKLOG L5 for the planned move into cfdtwin.gui.
+packages = ["cfdtwin", "gui"]
+
+# .gitignore globs *.png — re-include the GUI logo assets so the installed
+# wheel ships with them (window icon + about-screen wordmark).
+[tool.hatch.build.targets.wheel.force-include]
+"gui/assets/logo_icon.png" = "gui/assets/logo_icon.png"
+"gui/assets/logo_wordmark.png" = "gui/assets/logo_wordmark.png"
