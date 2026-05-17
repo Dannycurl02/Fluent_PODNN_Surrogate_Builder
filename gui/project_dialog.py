@@ -38,7 +38,12 @@ class ProjectDialog(QDialog):
         self.project = None
 
         self.setWindowTitle("Select Project")
-        self.setFixedSize(520, 420)
+        # 420px was tight under the old text title; the wordmark + the
+        # toggle-able Create panel need ~520px to all fit without crushing
+        # the recent-projects list. setMinimumSize (not setFixedSize) so
+        # high-DPI scaling can grow it further if needed.
+        self.setMinimumSize(520, 520)
+        self.resize(520, 520)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
 
         self._build_ui()
