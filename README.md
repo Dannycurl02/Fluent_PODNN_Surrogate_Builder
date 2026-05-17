@@ -3,10 +3,10 @@
 </p>
 
 Build neural-network surrogate models from ANSYS Fluent simulations.
-Two ways to drive the same pipeline:
+Two interfaces, one pipeline:
 
-- **GUI** — wizard-based desktop app, click through Setup → DOE → Simulate → Train → Analyze.
-- **API** — Python library, the same pipeline as ten method calls in a script.
+- **GUI** — wizard-based desktop app: Setup → DOE → Simulate → Train → Analyze.
+- **API** — Python library exposing the same pipeline as `cfdtwin.Project` methods.
 
 **Docs:** https://uark-ned3.github.io/CFDTwin/
 
@@ -19,43 +19,40 @@ Two ways to drive the same pipeline:
 
 ## Install
 
-Requires Python 3.10+ and a working ANSYS Fluent installation. Three paths
-depending on what you want:
+Requires Python 3.10+ and a working ANSYS Fluent installation. Three install paths:
 
-| Command                                | What you get                          | Best for                                        |
-|----------------------------------------|---------------------------------------|-------------------------------------------------|
-| `pip install cfdtwin`                  | API only (no Qt; ~80 MB smaller)      | Headless / HPC / scripted surrogate sweeps     |
-| `pip install cfdtwin[gui]`             | API + desktop GUI                     | Engineers who want the wizard, no `git` needed |
-| `git clone … && pip install -e .[dev]` | Everything + examples + tests + tools | Contributors, tutorial learners, tinkerers     |
+| Command                                | What you get                              |
+|----------------------------------------|-------------------------------------------|
+| `pip install cfdtwin`                  | API only (no Qt)                          |
+| `pip install cfdtwin[gui]`             | API and desktop GUI                       |
+| `git clone … && pip install -e .[dev]` | API, GUI, examples, and tests             |
 
 ```
 pip install cfdtwin              # API only
-pip install cfdtwin[gui]         # adds the wizard-based desktop app
+pip install cfdtwin[gui]         # adds the desktop GUI
 git clone https://github.com/UARK-NED3/CFDTwin && cd CFDTwin && pip install -e .[dev]
 ```
 
-If you `pip install cfdtwin` (no `[gui]`) and then run `cfdtwin-gui`, you'll
-get a friendly hint to install the GUI extra — no opaque ImportError.
-
-Runnable examples live in [`docs/examples/`](docs/examples/) — only available
-in a clone, or browse them online: https://uark-ned3.github.io/CFDTwin/examples/
+Running `cfdtwin-gui` after an API-only install prints an instruction to
+install the `[gui]` extra rather than raising ImportError.
 
 ## Use the GUI
 
-Three ways to launch, pick whichever you prefer:
+Three ways to launch:
 
 ```
-cfdtwin-gui                          # any terminal, after pip install
-python -m gui                        # from a repo clone, no install needed
-double-click scripts/launch_gui.bat  # Windows, no terminal pops up
+cfdtwin-gui                          # shell command, available after pip install
+python -m gui                        # from a repo clone
+double-click scripts/launch_gui.bat  # Windows; no terminal window
 ```
 
-To put a launcher on your Desktop (Windows): right-click `scripts/launch_gui.bat`,
-**Copy**, then right-click your Desktop and **Paste shortcut**. Optionally
-right-click the shortcut → Properties → Change Icon → browse to
-`gui/assets/logo_icon.png` for the CFDTwin logo.
+To create a Desktop launcher on Windows: right-click `scripts/launch_gui.bat`
+→ **Copy**, then right-click the Desktop → **Paste shortcut**. To set the
+CFDTwin icon, right-click the shortcut → Properties → Change Icon → browse
+to `gui/assets/logo_icon.png`.
 
-On launch, select or create a project. The sidebar steps unlock as prerequisites are met:
+On launch, select or create a project. Sidebar steps unlock as their
+prerequisites are met:
 
 1. **Setup** — pick `.cas` file, set Fluent options, define inputs and outputs
 2. **DOE** — generate LHS/factorial samples
@@ -65,8 +62,8 @@ On launch, select or create a project. The sidebar steps unlock as prerequisites
 
 ## Use the API
 
-Same pipeline from a Python script — useful for automation, parameter sweeps,
-or building bigger surrogate libraries:
+The same pipeline driven from a Python script, useful for automation and
+parameter sweeps:
 
 ```python
 import cfdtwin
@@ -95,14 +92,15 @@ pred = project.predict("run1", {
 print(pred.values.shape)
 ```
 
-Runnable scripts live in [`docs/examples/`](docs/examples/) — quickstart,
-full workflow, training tuning, and a "what BCs / parameters does my case
-expose?" discovery script.
+Runnable scripts live in [`docs/examples/`](docs/examples/): quickstart,
+full workflow, training tuning, and a discovery script for unfamiliar case
+files. Inlined online at
+https://uark-ned3.github.io/CFDTwin/examples/.
 
-- [API reference](https://uark-ned3.github.io/CFDTwin/api/project/) — every method, every argument
-- [Tutorials](https://uark-ned3.github.io/CFDTwin/tutorials/full_workflow/) — narrative walk-throughs
-- [Quickstart](https://uark-ned3.github.io/CFDTwin/quickstart/) — smallest end-to-end script
+- [API reference](https://uark-ned3.github.io/CFDTwin/api/project/)
+- [Tutorials](https://uark-ned3.github.io/CFDTwin/tutorials/full_workflow/)
+- [Quickstart](https://uark-ned3.github.io/CFDTwin/quickstart/)
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
