@@ -142,14 +142,14 @@ class Project:
         self._wp.set_case_file(case_file_path)
 
     def set_inputs(self, inputs: dict) -> None:
-        """Declare BC inputs (no Fluent connection required).
+        """Declare inputs (no Fluent connection required).
 
-        Two accepted shapes per entry — choose one:
+        Three accepted entry shapes — choose one per input:
 
-            # 1. range tuple (lo, hi). bc_type and parameter_path resolve at run time.
+            # 1. BC range tuple (lo, hi). bc_type and parameter_path resolve at run time.
             project.set_inputs({"inlet|velocity": (0.1, 1.0)})
 
-            # 2. rich dict — fully declarative, no Fluent needed at any stage.
+            # 2. BC rich dict — fully declarative, no Fluent needed at any stage.
             project.set_inputs({
                 "inlet|velocity": {
                     "range": (0.1, 1.0),
@@ -158,18 +158,52 @@ class Project:
                 },
             })
 
-        The dict key format is "<bc_name>|<parameter_display>" — e.g.
-        "inlet|velocity" for inlet's velocity parameter. Use the rich shape
-        when scripting without a live Fluent session.
+            # 3. Fluent input parameter (named expression with input_parameter=True).
+            # Key is the expression name; pass category="Input Parameter" and
+            # the unit string. Easiest path: feed back from list_available_inputs().
+            project.set_inputs({
+                "inlet_vel": {
+                    "range": (0.2, 0.8),
+                    "category": "Input Parameter",
+                    "unit": "m/s",
+                },
+            })
+
+        BC keys use "<bc_name>|<parameter_display>" (e.g. "inlet|velocity").
+        Input-parameter keys are just the expression name.
         """
         if not isinstance(inputs, dict):
             raise TypeError("inputs must be a dict")
 
         model_inputs = []
         for key, value in inputs.items():
+            is_input_param = (
+                isinstance(value, dict)
+                and value.get('category') == 'Input Parameter'
+            )
+
+            if is_input_param:
+                if 'range' not in value:
+                    raise ValueError(f"Input {key!r}: dict form requires a 'range' key")
+                # The named expression IS the parameter — no sub-parameter to pick.
+                # Tolerate "name|name" form so list_available_inputs() output can
+                # be fed back as-is.
+                expr_name = key.split('|', 1)[0]
+                model_inputs.append({
+                    'name': expr_name,
+                    'type': 'Input Parameter',
+                    'category': 'Input Parameter',
+                    'parameter': expr_name,
+                    'parameter_path': expr_name,
+                    'unit': value.get('unit', ''),
+                    'range': list(value['range']),
+                })
+                continue
+
             if '|' not in key:
                 raise ValueError(
-                    f"Input key {key!r} must be 'bc_name|parameter' (e.g. 'inlet|velocity')"
+                    f"Input key {key!r} must be 'bc_name|parameter' (e.g. 'inlet|velocity'), "
+                    "or a dict with category='Input Parameter' for Fluent named expressions"
                 )
             bc_name, param = key.split('|', 1)
             entry = {
@@ -199,6 +233,26 @@ class Project:
         existing['model_inputs'] = model_inputs
         with open(self._wp.model_setup_file, 'w') as f:
             json.dump(existing, f, indent=2)
+
+    def list_available_inputs(self) -> list[dict]:
+        """Discover BCs + input parameters from the connected Fluent session.
+
+        Requires a live Fluent connection (call ``connect_fluent()`` first).
+        Each returned dict has at least ``name``, ``type``, ``category``;
+        ``Input Parameter`` entries also carry ``unit``, ``current_value``, and
+        ``definition``. The dicts can be fed back into ``set_inputs`` after
+        adding a ``range``::
+
+            project.connect_fluent()
+            for item in project.list_available_inputs():
+                print(item['name'], item['category'])
+        """
+        if self._solver is None:
+            raise RuntimeError(
+                "No Fluent connection. Call connect_fluent() before list_available_inputs()."
+            )
+        from . import _project_manager
+        return _project_manager.get_available_inputs(self._solver)
 
     def set_outputs(self, outputs: list[dict]) -> None:
         """Declare outputs to extract from each simulation.
@@ -339,12 +393,15 @@ class Project:
 
     def run_simulations(
         self,
-        iterations: int = 100,
+        iterations: int | None = None,
         reinitialize: bool = True,
         on_progress: Callable | None = None,
         on_iteration: Callable | None = None,
     ) -> SimulationResult:
-        """Run all incomplete DOE simulations. Auto-connects Fluent if needed."""
+        """Run all incomplete DOE simulations. Auto-connects Fluent if needed.
+
+        `iterations=None` (default) honors whatever iteration count the case
+        file has set. Pass an int to override that for this batch."""
         if self._solver is None:
             self.connect_fluent()
         if not self._wp.model_setup_file.exists():

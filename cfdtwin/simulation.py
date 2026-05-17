@@ -77,15 +77,20 @@ def generate_doe_combinations(setup_data, doe_samples=None):
     """
     # New format: build from doe_samples list
     if doe_samples:
+        # Per-input metadata: bc_type, dot-path, category, unit (input parameters only).
         bc_type_map = {}
-        param_path_map = {}  # 'bc_name|param_display' -> dot-path for PyFluent
+        param_path_map = {}
+        category_map = {}    # input_name -> 'Boundary Condition' | 'Input Parameter'
+        unit_map = {}        # input_name -> '[m/s]' bracket string for Input Parameter
         for input_item in setup_data.get('model_inputs', []):
             bc_type_map[input_item['name']] = input_item['type']
-            # Map the DOE key to the actual PyFluent attribute path
             param_display = input_item.get('parameter', 'value')
             param_path = input_item.get('parameter_path', param_display.replace(' > ', '.'))
             key = f"{input_item['name']}|{param_display}"
             param_path_map[key] = param_path
+            category_map[input_item['name']] = input_item.get('category', 'Boundary Condition')
+            if 'unit' in input_item:
+                unit_map[input_item['name']] = input_item['unit']
 
         doe_list = []
         for sim_id, sample in enumerate(doe_samples, 1):
@@ -95,13 +100,17 @@ def generate_doe_combinations(setup_data, doe_samples=None):
                 bc_name = parts[0]
                 param_name = parts[1] if len(parts) > 1 else 'value'
                 param_path = param_path_map.get(key, param_name.replace(' > ', '.'))
-                bc_values[key] = {
+                entry = {
                     'bc_name': bc_name,
                     'bc_type': bc_type_map.get(bc_name, 'Unknown'),
                     'param_name': param_name,
                     'param_path': param_path,
-                    'value': value
+                    'value': value,
+                    'category': category_map.get(bc_name, 'Boundary Condition'),
                 }
+                if bc_name in unit_map:
+                    entry['unit'] = unit_map[bc_name]
+                bc_values[key] = entry
             doe_list.append((sim_id, bc_values))
         return doe_list
 
@@ -156,19 +165,56 @@ def generate_doe_combinations(setup_data, doe_samples=None):
     return doe_list
 
 
+def _apply_input_parameter(solver, name, value, unit):
+    """Write a Fluent named expression (input parameter) to <value> [<unit>]."""
+    try:
+        named_exprs = solver.settings.setup.named_expressions
+        if name not in named_exprs:
+            logger.error(f"Input parameter '{name}' not found in Fluent named expressions")
+            return False
+        # PyFluent accepts a partial state dict — only `definition` needs to change.
+        unit_str = f" [{unit}]" if unit else ""
+        new_def = f"{float(value)}{unit_str}"
+        named_exprs[name] = {"definition": new_def}
+        logger.info(f"input_parameter {name} = {new_def}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to set input parameter '{name}': {e}")
+        return False
+
+
 def apply_boundary_conditions(solver, bc_values):
     """
-    Apply boundary conditions to Fluent solver.
+    Apply boundary conditions / input parameters to Fluent solver.
+
+    Branches on each entry's `category`:
+      - 'Boundary Condition' (default): navigate settings.setup.boundary_conditions
+      - 'Input Parameter': set settings.setup.named_expressions[<name>].definition
 
     Returns
     -------
     bool
-        True if successful
+        True if all entries applied successfully.
     """
     try:
         boundary_conditions = solver.settings.setup.boundary_conditions
 
         for bc_key, bc_info in bc_values.items():
+            category = bc_info.get('category', 'Boundary Condition')
+
+            # Input Parameter: simpler path — write the named expression directly.
+            # Fluent then propagates the new value to whichever BC references it.
+            if category == 'Input Parameter':
+                ok = _apply_input_parameter(
+                    solver,
+                    bc_info['bc_name'],
+                    bc_info['value'],
+                    bc_info.get('unit', ''),
+                )
+                if not ok:
+                    return False
+                continue
+
             bc_name = bc_info['bc_name']
             bc_type = bc_info['bc_type'].lower().replace(' ', '_')
             param_path = bc_info['param_path']
@@ -444,7 +490,25 @@ def _ensure_reference_coordinates(solver, setup_data, dataset_dir):
     return False
 
 
-def run_single_simulation(solver, setup_data, dataset_dir, sim_id, iterations=100):
+def _resolve_iter_count(solver, iterations):
+    """Pick the iteration count for the iterate() call.
+
+    If `iterations` is explicitly given, use it. Otherwise read the case file's
+    own `iter_count` setting from Fluent so the GUI's "Run" honors what the
+    user set in Fluent (instead of overriding to a hard-coded default)."""
+    if iterations is not None:
+        return int(iterations)
+    try:
+        n = solver.settings.solution.run_calculation.iter_count.get_state()
+        if n and int(n) > 0:
+            logger.info(f"Using Fluent's configured iter_count = {int(n)}")
+            return int(n)
+    except Exception as e:
+        logger.warning(f"Could not read Fluent's iter_count ({e}); falling back to 100")
+    return 100
+
+
+def run_single_simulation(solver, setup_data, dataset_dir, sim_id, iterations=None):
     """
     Run a single simulation by DOE index.
 
@@ -479,6 +543,7 @@ def run_single_simulation(solver, setup_data, dataset_dir, sim_id, iterations=10
         logger.error(f"Initialization error: {e}")
         return False, None
 
+    iterations = _resolve_iter_count(solver, iterations)
     try:
         with suppress_fluent_output():
             solver.settings.solution.run_calculation.iterate(iter_count=iterations)
@@ -509,7 +574,7 @@ def run_single_simulation(solver, setup_data, dataset_dir, sim_id, iterations=10
     return True, output_file
 
 
-def run_batch_simulations(solver, setup_data, dataset_dir, iterations=100,
+def run_batch_simulations(solver, setup_data, dataset_dir, iterations=None,
                           on_progress=None, on_iteration=None):
     """
     Run all DOE simulations in batch mode.
@@ -528,7 +593,7 @@ def run_batch_simulations(solver, setup_data, dataset_dir, iterations=100,
                                  on_progress=on_progress, on_iteration=on_iteration)
 
 
-def run_remaining_simulations(solver, setup_data, dataset_dir, iterations=100,
+def run_remaining_simulations(solver, setup_data, dataset_dir, iterations=None,
                               on_progress=None, on_iteration=None, stop_flag=None,
                               reinitialize=True, doe_samples=None):
     """
@@ -574,7 +639,7 @@ def run_remaining_simulations(solver, setup_data, dataset_dir, iterations=100,
                                  stop_flag=stop_flag, reinitialize=reinitialize)
 
 
-def _run_simulation_batch(solver, setup_data, dataset_dir, doe_list, iterations,
+def _run_simulation_batch(solver, setup_data, dataset_dir, doe_list, iterations=None,
                           on_progress=None, on_iteration=None, stop_flag=None,
                           reinitialize=True):
     """
@@ -607,6 +672,10 @@ def _run_simulation_batch(solver, setup_data, dataset_dir, doe_list, iterations,
     is_first_sim = True
     has_reference_coords = load_reference_coordinates(dataset_dir) is not None
     stopped_reason = None
+
+    # Resolve iteration count once at batch start: explicit value if the caller
+    # passed one, else honor whatever's set on the Fluent case.
+    iterations = _resolve_iter_count(solver, iterations)
 
     for idx, (sim_id, bc_values) in enumerate(doe_list, 1):
         # Check stop flag between simulations

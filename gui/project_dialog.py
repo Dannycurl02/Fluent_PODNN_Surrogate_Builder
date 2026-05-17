@@ -49,13 +49,22 @@ class ProjectDialog(QDialog):
         layout.setSpacing(16)
         layout.setContentsMargins(24, 24, 24, 24)
 
-        # Title
-        title = QLabel("Fluent PODNN Surrogate Builder")
-        font = title.font()
-        font.setPointSize(16)
-        font.setBold(True)
-        title.setFont(font)
+        # Wordmark — replaces the old bold-text title.
+        from PySide6.QtGui import QPixmap
+        wordmark_path = Path(__file__).resolve().parent / "assets" / "logo_wordmark.png"
+        title = QLabel()
         title.setAlignment(Qt.AlignCenter)
+        if wordmark_path.exists():
+            pix = QPixmap(str(wordmark_path))
+            # Scale to a reasonable header height while preserving aspect.
+            title.setPixmap(pix.scaledToHeight(56, Qt.SmoothTransformation))
+        else:
+            # Fall back to text if the asset is missing.
+            title.setText("CFDTwin")
+            font = title.font()
+            font.setPointSize(16)
+            font.setBold(True)
+            title.setFont(font)
         layout.addWidget(title)
 
         # --- Action buttons ---

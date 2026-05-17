@@ -69,13 +69,21 @@ def launch_fluent(case_file_path, solver_settings, log_dir=None):
                      f"processors={solver_settings['processor_count']}, "
                      f"dim={solver_settings['dimension']}D)")
 
+        # Default PyFluent start_timeout is 60s — too short for cold license-server
+        # checks, slow disks, or first-time launches. 600s (10 min) covers the
+        # worst realistic case without leaving the user staring at a hung launch.
+        # Note: this is the gRPC handshake timeout, not the case-file load — that
+        # blocks separately and has no timeout.
+        start_timeout = int(solver_settings.get('start_timeout', 600))
+
         with _redirect_to_file(log_file):
             solver = pyfluent.launch_fluent(
                 precision=solver_settings['precision'],
                 processor_count=solver_settings['processor_count'],
                 dimension=solver_settings['dimension'],
                 mode="solver",
-                ui_mode=ui_mode
+                ui_mode=ui_mode,
+                start_timeout=start_timeout,
             )
 
         logger.info(f"Fluent launched (version {solver.get_fluent_version()})")
@@ -93,19 +101,39 @@ def launch_fluent(case_file_path, solver_settings, log_dir=None):
         return solver
 
     except Exception as e:
-        error_str = str(e).lower()
-        if 'no module named' in error_str and 'ansys' in error_str:
-            logger.error("PyFluent is not installed. Run: pip install ansys-fluent-core")
-            raise RuntimeError("PyFluent is not installed. Run: pip install ansys-fluent-core") from e
-        elif any(kw in error_str for kw in ['connection refused', 'connect', 'unavailable', '10061']):
-            logger.error("CONNECTION ERROR: Check that VPN is enabled and license server is reachable")
-        else:
-            logger.error(f"Error launching Fluent: {e}")
+        # Include exception type — PyFluent's RuntimeError often has an empty
+        # str(), leaving the GUI dialog blank if we only forward str(e).
+        error_msg = str(e) or repr(e)
+        error_str = error_msg.lower()
+        exc_type = type(e).__name__
+        log_hint = ""
+        if log_file is not None and hasattr(log_file, 'name'):
+            log_hint = f"\n\nFluent log: {log_file.name}"
 
+        if 'no module named' in error_str and 'ansys' in error_str:
+            user_msg = "PyFluent is not installed. Run: pip install ansys-fluent-core"
+        elif 'deadline exceeded' in error_str or 'timeout' in error_str:
+            user_msg = (
+                f"Fluent launch timed out after {start_timeout}s ({exc_type}). "
+                f"Either Fluent is slow to start on this machine or it crashed during "
+                f"init. Bump solver_settings['start_timeout'] if you have a known-slow "
+                f"machine, or check the Fluent log for the underlying cause."
+            )
+        elif any(kw in error_str for kw in ['connection refused', 'connect', 'unavailable', '10061']):
+            user_msg = (
+                f"Fluent connection error ({exc_type}): {error_msg}. "
+                f"Check that VPN is enabled and the license server is reachable."
+            )
+        else:
+            user_msg = f"Fluent launch failed ({exc_type}): {error_msg}"
+
+        # Log the full traceback for debugging; surface the user-facing message
+        # via the raise so the GUI popup gets something useful instead of blank.
+        logger.error(user_msg, exc_info=True)
         try:
             if log_file is not None and hasattr(log_file, 'close'):
                 log_file.close()
         except Exception:
             pass
 
-        return None
+        raise RuntimeError(user_msg + log_hint) from e

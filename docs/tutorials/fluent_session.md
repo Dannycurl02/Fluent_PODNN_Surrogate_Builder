@@ -6,7 +6,38 @@ until run time. So you have to know the keys upfront.
 
 This page shows how to list them from a live Fluent session if you don't.
 
-> **Run it:** [`examples/discovering_bcs.py`](https://github.com/UARK-NED3/CFDTwin/blob/master/examples/discovering_bcs.py) launches Fluent against mixing_elbow and prints every BC, parameter, surface, and report definition it can find.
+> **Run it:** [`docs/examples/discovering_bcs.py`](https://github.com/UARK-NED3/CFDTwin/blob/master/docs/examples/discovering_bcs.py) launches Fluent against mixing_elbow and prints every BC, parameter, surface, and report definition it can find.
+
+## Shortcut: `Project.list_available_inputs()`
+
+If you only care about discovering **inputs**, the Project API wraps the
+PyFluent calls below and returns BCs + Fluent input parameters (named
+expressions flagged `input_parameter=True`) as one list, already grouped by
+category:
+
+```python
+import cfdtwin
+project = cfdtwin.Project.create("./study", name="elbow")
+project.set_case_file("my_case.cas.h5")
+project.connect_fluent()
+
+for item in project.list_available_inputs():
+    print(item)
+# [{'name': 'cold-inlet', 'type': 'Velocity Inlet', 'category': 'Boundary Condition'},
+#  {'name': 'inlet_vel', 'type': 'Input Parameter', 'category': 'Input Parameter',
+#   'unit': 'm/s', 'current_value': 0.4, 'definition': '0.4 [m/s]'}, ...]
+```
+
+Each entry can be fed straight back into `set_inputs` by attaching a `range`:
+
+```python
+avail = {x['name']: x for x in project.list_available_inputs()}
+ip = avail['inlet_vel']
+project.set_inputs({ip['name']: {**ip, 'range': (0.2, 0.8)}})
+```
+
+The rest of this page covers the raw PyFluent calls if you need detail the
+helper doesn't surface (per-BC sub-parameter paths, surfaces, report defs).
 
 ## Connect with PyFluent and load your case
 

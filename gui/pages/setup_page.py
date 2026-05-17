@@ -196,13 +196,82 @@ class SetupPage(QWidget):
         scroll.setWidget(self._inputs_container)
         outer.addWidget(scroll, 1)
 
-        # Plus button
+        # Action row: Add Input + Refresh
+        btn_row = QHBoxLayout()
+        btn_row.setContentsMargins(0, 0, 0, 0)
+
         self._add_input_btn = QPushButton("+  Add Input")
         self._add_input_btn.setFixedWidth(140)
         self._add_input_btn.clicked.connect(self._add_input_row)
-        outer.addWidget(self._add_input_btn)
+        btn_row.addWidget(self._add_input_btn)
+
+        self._refresh_inputs_btn = QPushButton("Refresh from Fluent")
+        self._refresh_inputs_btn.setFixedWidth(160)
+        self._refresh_inputs_btn.setProperty("flat", True)
+        self._refresh_inputs_btn.setToolTip(
+            "Re-query Fluent for BCs and input parameters. Use after adding new "
+            "boundary conditions or named expressions in the Fluent session."
+        )
+        self._refresh_inputs_btn.clicked.connect(self._refresh_available_inputs)
+        btn_row.addWidget(self._refresh_inputs_btn)
+        btn_row.addStretch()
+
+        btn_holder = QWidget()
+        btn_holder.setLayout(btn_row)
+        outer.addWidget(btn_holder)
 
         return page
+
+    def _refresh_available_inputs(self):
+        """Re-query Fluent and refresh every input row's BC dropdown.
+
+        Called when the user clicks "Refresh from Fluent" — picks up BCs or
+        named expressions added in the Fluent session since the page loaded.
+        Each row's selection is preserved if the previously-chosen name still
+        exists; otherwise the row falls back to the placeholder.
+        """
+        fm = FluentManager.instance()
+        if not fm.is_available():
+            QMessageBox.warning(self, "Not Connected",
+                                "Connect to Fluent first, then refresh.")
+            return
+
+        new_items = get_available_inputs(fm.solver)
+        if not new_items:
+            QMessageBox.warning(self, "Nothing Found",
+                                "Fluent returned no BCs or input parameters.")
+            return
+        self._available_inputs = new_items
+
+        # Rebuild every row's BC combo, preserving the selected name when possible.
+        for row_widget, bc_combo, param_combo in self._input_rows:
+            current_data = bc_combo.currentData()
+            selected_name = current_data['name'] if current_data else None
+
+            bc_combo.blockSignals(True)
+            bc_combo.clear()
+            bc_combo.addItem("-- Select BC --")
+            for item in self._available_inputs:
+                bc_combo.addItem(f"{item['name']}  ({item['type']})", item)
+            bc_combo.blockSignals(False)
+
+            if selected_name:
+                for i in range(1, bc_combo.count()):
+                    data = bc_combo.itemData(i)
+                    if data and data['name'] == selected_name:
+                        bc_combo.setCurrentIndex(i)  # fires on_bc_changed -> repopulates param_combo
+                        break
+                else:
+                    # Previously-selected BC no longer exists; reset.
+                    param_combo.clear()
+                    param_combo.addItem("-- Select parameter --")
+                    param_combo.setEnabled(False)
+            else:
+                param_combo.clear()
+                param_combo.addItem("-- Select parameter --")
+                param_combo.setEnabled(False)
+
+        logger.info(f"Refreshed inputs from Fluent: {len(new_items)} item(s)")
 
     def _add_input_row(self, bc_name=None, param_name=None):
         """Add a new input row with BC dropdown + parameter dropdown."""
@@ -258,7 +327,27 @@ class SetupPage(QWidget):
                 pc.setEnabled(False)
                 return
             bc_data = bc_combo.itemData(idx)
-            if bc_data and fm.is_available():
+            if not bc_data:
+                return
+
+            # Input Parameters (Fluent named expressions) ARE the parameter —
+            # no second dropdown choice to make. Auto-select the only entry
+            # (showing unit + current value for context) and grey out the combo.
+            if bc_data.get('category') == 'Input Parameter':
+                unit = bc_data.get('unit', '')
+                current = bc_data.get('current_value')
+                label = bc_data['name']
+                if unit:
+                    label += f"  [{unit}]"
+                if current is not None:
+                    label += f"  (current: {current:g})"
+                # Store the same dict so save logic can read unit/category back.
+                pc.addItem(label, {'path': bc_data['name'], 'unit': unit, 'category': 'Input Parameter'})
+                pc.setCurrentIndex(1)  # the only real entry
+                pc.setEnabled(False)
+                return
+
+            if fm.is_available():
                 params = get_bc_parameters(fm.solver, bc_data['name'], bc_data['type'])
                 for p in params:
                     pc.addItem(p['name'], p)
@@ -291,6 +380,14 @@ class SetupPage(QWidget):
                 # Param combo gets populated by on_bc_changed signal; set after
                 from PySide6.QtCore import QTimer
                 def set_param():
+                    # Input Parameter rows: the param combo has exactly one
+                    # real entry (the named expression itself) and is greyed
+                    # out — just lock it to index 1.
+                    bc_data = bc_combo.currentData()
+                    if isinstance(bc_data, dict) and bc_data.get('category') == 'Input Parameter':
+                        if param_combo.count() > 1:
+                            param_combo.setCurrentIndex(1)
+                        return
                     idx = param_combo.findText(param_name)
                     if idx >= 0:
                         param_combo.setCurrentIndex(idx)
@@ -321,7 +418,14 @@ class SetupPage(QWidget):
             if not inputs:
                 return
             for inp in inputs:
-                label = QLabel(f"  {inp['name']}  :  {inp.get('parameter', 'value')}")
+                category = inp.get('category', 'Boundary Condition')
+                if category == 'Input Parameter':
+                    unit = inp.get('unit', '')
+                    unit_str = f"  [{unit}]" if unit else ""
+                    text = f"  {inp['name']}  (Input Parameter{unit_str})"
+                else:
+                    text = f"  {inp['name']}  :  {inp.get('parameter', 'value')}"
+                label = QLabel(text)
                 label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; background: transparent; padding: 6px 0;")
                 label.setProperty("readonly_input", True)
                 self._inputs_layout.addWidget(label)
@@ -573,12 +677,18 @@ class SetupPage(QWidget):
                 return
             # Store both display name and dot-path for the runner
             param_path = param_data.get('path', param_text) if isinstance(param_data, dict) else param_text
-            selected_inputs.append({
+            entry = {
                 'name': bc_data['name'],
                 'type': bc_data['type'],
-                'parameter': param_text,
+                'category': bc_data.get('category', 'Boundary Condition'),
+                'parameter': bc_data['name'] if bc_data.get('category') == 'Input Parameter' else param_text,
                 'parameter_path': param_path,
-            })
+            }
+            # Input parameters carry their unit so the runner can re-write
+            # "<value> [<unit>]" without re-querying Fluent at sim time.
+            if bc_data.get('category') == 'Input Parameter':
+                entry['unit'] = bc_data.get('unit', '')
+            selected_inputs.append(entry)
 
         if not selected_inputs:
             QMessageBox.warning(self, "No Inputs", "Add at least one input parameter.")
@@ -810,6 +920,9 @@ class SetupPage(QWidget):
 
         # Inputs step
         self._add_input_btn.setEnabled(can_edit)
+        # Refresh only needs a live Fluent — independent of dataset lock so users
+        # can pick up newly-added BCs/named expressions even mid-project.
+        self._refresh_inputs_btn.setEnabled(connected)
         for row_widget, bc_combo, param_combo in self._input_rows:
             bc_combo.setEnabled(can_edit)
             param_combo.setEnabled(can_edit and bc_combo.currentIndex() > 0)

@@ -1,4 +1,6 @@
-# CFDTwin
+<p align="center">
+  <img src="docs/assets/logo_wordmark.png" alt="CFDTwin" width="420"/>
+</p>
 
 Wizard-based desktop app for building neural-network surrogate models from ANSYS Fluent simulations. Load a `.cas` file, sample the parameter space, run the batch sim, train a POD+NN model, and validate — all in one GUI.
 
@@ -7,17 +9,23 @@ Wizard-based desktop app for building neural-network surrogate models from ANSYS
 Requires Python 3.10+ and a working ANSYS Fluent installation.
 
 ```
-pip install -e .
-pip install pytest pytest-qt
+pip install -e .[dev]   # drop [dev] if you won't run the test suite
 ```
 
-## Run
+## Run the GUI
 
-From the repo root:
+Three ways, pick whichever you prefer:
 
 ```
-python -m gui
+cfdtwin-gui                          # any terminal, after pip install
+python -m gui                        # from the repo root, no install needed
+double-click scripts/launch_gui.bat  # Windows, no terminal pops up
 ```
+
+To put a launcher on your Desktop (Windows): right-click `scripts/launch_gui.bat`,
+**Copy**, then right-click your Desktop and **Paste shortcut**. Optionally
+right-click the shortcut → Properties → Change Icon → browse to
+`gui/assets/logo_icon.png` for the CFDTwin logo.
 
 On launch, select or create a project. The sidebar steps unlock as prerequisites are met:
 

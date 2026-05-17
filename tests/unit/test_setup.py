@@ -53,6 +53,78 @@ def test_set_inputs_rich_dict(tmp_project):
     assert inp["range"] == [0.1, 1.0]
 
 
+# --- set_inputs (Input Parameter shape) -----------------------------------
+
+def test_set_inputs_input_parameter(tmp_project):
+    tmp_project.set_inputs({
+        "inlet_vel": {
+            "range": (0.2, 0.8),
+            "category": "Input Parameter",
+            "unit": "m/s",
+        }
+    })
+    inp = _read_setup(tmp_project)["model_inputs"][0]
+    assert inp["name"] == "inlet_vel"
+    assert inp["type"] == "Input Parameter"
+    assert inp["category"] == "Input Parameter"
+    assert inp["parameter"] == "inlet_vel"
+    assert inp["parameter_path"] == "inlet_vel"
+    assert inp["unit"] == "m/s"
+    assert inp["range"] == [0.2, 0.8]
+
+
+def test_set_inputs_input_parameter_skips_pipe_requirement(tmp_project):
+    # Input Parameter keys don't need '|' — the expression name IS the parameter.
+    tmp_project.set_inputs({
+        "outlet_pressure": {
+            "range": (90000, 110000),
+            "category": "Input Parameter",
+            "unit": "Pa",
+        }
+    })
+    assert _read_setup(tmp_project)["model_inputs"][0]["name"] == "outlet_pressure"
+
+
+def test_set_inputs_input_parameter_tolerates_pipe_form(tmp_project):
+    # list_available_inputs() returns dicts that may be fed back as
+    # {item['name']: {**item, 'range': ...}} — the key has no pipe but
+    # also accept "name|name" if users construct it that way.
+    tmp_project.set_inputs({
+        "inlet_vel|inlet_vel": {
+            "range": (0.2, 0.8),
+            "category": "Input Parameter",
+            "unit": "m/s",
+        }
+    })
+    assert _read_setup(tmp_project)["model_inputs"][0]["name"] == "inlet_vel"
+
+
+def test_set_inputs_input_parameter_requires_range(tmp_project):
+    with pytest.raises(ValueError, match="requires a 'range' key"):
+        tmp_project.set_inputs({
+            "inlet_vel": {"category": "Input Parameter", "unit": "m/s"}
+        })
+
+
+def test_list_available_inputs_requires_fluent(tmp_project):
+    with pytest.raises(RuntimeError, match="connect_fluent"):
+        tmp_project.list_available_inputs()
+
+
+def test_list_available_inputs_proxies_to_project_manager(tmp_project, monkeypatch):
+    fake_items = [
+        {"name": "inlet", "type": "Velocity Inlet", "category": "Boundary Condition"},
+        {"name": "inlet_vel", "type": "Input Parameter",
+         "category": "Input Parameter", "unit": "m/s",
+         "current_value": 0.5, "definition": "0.5 [m/s]"},
+    ]
+    tmp_project._solver = object()  # any non-None placeholder
+    from cfdtwin import _project_manager
+    monkeypatch.setattr(_project_manager, "get_available_inputs",
+                        lambda solver: fake_items)
+    assert tmp_project.list_available_inputs() == fake_items
+
+
 # --- set_inputs validation -------------------------------------------------
 
 def test_set_inputs_requires_pipe_in_key(tmp_project):

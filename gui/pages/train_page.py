@@ -143,23 +143,18 @@ class TrainPage(QWidget):
         layout.addSpacing(12)
 
         # --- Config row ---
+        # Epochs / test split / val split are per-model-type and live in the
+        # Model Settings dialog (one set of values per 1D/2D/3D). This row
+        # only shows the Train button + a hint pointing to settings.
         config_row = QHBoxLayout()
 
-        config_row.addWidget(QLabel("Epochs:"))
-        self._epochs_spin = QSpinBox()
-        self._epochs_spin.setRange(10, 10000)
-        self._epochs_spin.setValue(500)
-        self._epochs_spin.setButtonSymbols(QSpinBox.NoButtons)
-        config_row.addWidget(self._epochs_spin)
-
-        config_row.addSpacing(16)
-        config_row.addWidget(QLabel("Test split:"))
-        self._split_spin = QDoubleSpinBox()
-        self._split_spin.setRange(0.0, 0.5)
-        self._split_spin.setSingleStep(0.05)
-        self._split_spin.setValue(0.2)
-        self._split_spin.setButtonSymbols(QDoubleSpinBox.NoButtons)
-        config_row.addWidget(self._split_spin)
+        settings_hint = QLabel(
+            "Epochs, test split, and validation split are configured per model "
+            "type in <b>Model Settings</b>."
+        )
+        settings_hint.setProperty("secondary", True)
+        settings_hint.setWordWrap(True)
+        config_row.addWidget(settings_hint, 1)
 
         config_row.addSpacing(16)
         self._train_btn = QPushButton("Train")
@@ -278,6 +273,9 @@ class TrainPage(QWidget):
         # Locations with multiple field_variables get one row per field.
         self._output_cbs = {}   # model_key -> checkbox
         self._output_names = {}  # model_key -> line edit
+        # Track preset type ('1d'/'2d'/'3d') per model_key so the trainer can
+        # pull per-type epochs/test_split/val_split from settings.
+        self._output_preset = {}  # model_key -> '1d' | '2d' | '3d'
 
         if not self.project.output_parameters_file.exists():
             return
@@ -333,6 +331,7 @@ class TrainPage(QWidget):
 
                     self._output_cbs[model_key] = cb
                     self._output_names[model_key] = name_edit
+                    self._output_preset[model_key] = dim.lower()  # '1d'/'2d'/'3d'
         except Exception as e:
             logger.warning(f"Error loading outputs for training: {e}")
 
@@ -399,12 +398,22 @@ class TrainPage(QWidget):
         # Create a live canvas tab for this model
         self._create_live_canvas(model_name)
 
+        # Pull per-model-type training settings from Model Settings — each row
+        # may belong to a different type (1d/2d/3d) and have different epochs,
+        # test split, and val split.
+        preset_type = self._output_preset.get(model_key, '2d')
+        type_cfg = nn_settings.get(preset_type, {}) or {}
+        epochs = int(type_cfg.get('epochs', 500))
+        test_size = float(type_cfg.get('test_size', 0.2))
+        val_split = type_cfg.get('val_split', 'adaptive')
+
         self._worker = TrainingWorker(
             project_dir=self.project.project_path,
             model_name=model_name,
             model_selection=nn_settings,
-            test_size=self._split_spin.value(),
-            epochs=self._epochs_spin.value(),
+            test_size=test_size,
+            epochs=epochs,
+            val_split=val_split,
             output_filter=[model_key],
         )
         self._worker.model_started.connect(self._on_model_started)

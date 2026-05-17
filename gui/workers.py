@@ -43,13 +43,15 @@ class FluentLaunchWorker(QThread):
                 self.solver_settings,
                 self.log_dir,
             )
+            # launch_fluent now raises on failure; this is a defensive fallback.
             if solver is not None:
                 self.finished.emit(solver)
             else:
-                self.error.emit("Fluent launch returned None. Check logs for details.")
+                self.error.emit("Fluent launch returned None. Check the Fluent log next to your project for details.")
         except Exception as e:
-            logger.error(f"FluentLaunchWorker error: {e}")
-            self.error.emit(str(e))
+            msg = str(e) or repr(e)
+            logger.error(f"FluentLaunchWorker error: {msg}")
+            self.error.emit(msg)
 
 
 class SimulationWorker(QThread):
@@ -141,7 +143,7 @@ class TrainingWorker(QThread):
 
     def __init__(self, project_dir, model_name, model_selection,
                  test_size=0.2, epochs=500, exclude_range=None,
-                 output_filter=None, parent=None):
+                 output_filter=None, val_split='adaptive', parent=None):
         super().__init__(parent)
         self.project_dir = Path(project_dir)
         self.model_name = model_name
@@ -150,6 +152,7 @@ class TrainingWorker(QThread):
         self.epochs = epochs
         self.exclude_range = exclude_range
         self.output_filter = output_filter
+        self.val_split = val_split
 
     def run(self):
         try:
@@ -191,6 +194,7 @@ class TrainingWorker(QThread):
                 on_progress=on_progress,
                 output_filter=self.output_filter,
                 on_epoch=on_epoch,
+                val_split=self.val_split,
             )
             self.finished.emit(summary)
         except Exception as e:

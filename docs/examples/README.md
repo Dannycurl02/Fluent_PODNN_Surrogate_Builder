@@ -1,6 +1,6 @@
 # cfdtwin examples
 
-Runnable scripts that mirror the [tutorials](../docs/tutorials/). Each one is
+Runnable scripts that mirror the [tutorials](../tutorials/). Each one is
 self-contained — clone the repo, `pip install -e .`, run.
 
 | Script | What it does |
@@ -19,7 +19,7 @@ self-contained — clone the repo, `pip install -e .`, run.
 ## Running
 
 ```bash
-python examples/quickstart.py
+python docs/examples/quickstart.py
 ```
 
 Each script downloads the mixing_elbow case via PyFluent's example helper

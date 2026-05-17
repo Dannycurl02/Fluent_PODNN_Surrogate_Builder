@@ -329,7 +329,8 @@ def load_training_data(dataset_dir, exclude_range=None):
 def train_all_models(dataset_dir, model_name, model_selection=None,
                      test_size=0.2, epochs=500, exclude_range=None,
                      on_progress=None, output_filter=None, on_epoch=None,
-                     random_seed=42, per_output_pod=None, per_output_nn=None):
+                     random_seed=42, per_output_pod=None, per_output_nn=None,
+                     val_split='adaptive'):
     """
     Train models for all outputs in a case.
 
@@ -450,17 +451,27 @@ def train_all_models(dataset_dir, model_name, model_selection=None,
             def epoch_cb(epoch, train_loss, val_loss, _name=output_model_name):
                 on_epoch(_name, epoch, train_loss, val_loss)
 
-        # For small training sets, use a larger validation fraction so the val signal
-        # isn't dominated by 2-3 noisy samples. For very small sets, disable the
-        # inner val split entirely and let early stopping use train loss.
+        # Inner validation split: explicit float honored; 'adaptive' (default)
+        # scales the fraction with training-set size so the val signal isn't
+        # noise-dominated on tiny DOEs. For <15 samples, disable val entirely
+        # and early-stop on the training loss instead.
         n_train = len(train_idx)
-        if n_train < 15:
-            inner_val_split = 0.0
-            logger.info(f"Small training set ({n_train}), using validation_split=0 (train-loss early stopping)")
-        elif n_train < 40:
-            inner_val_split = 0.3
+        if val_split == 'adaptive' or val_split is None:
+            if n_train < 15:
+                inner_val_split = 0.0
+                logger.info(f"Small training set ({n_train}), using validation_split=0 (train-loss early stopping)")
+            elif n_train < 40:
+                inner_val_split = 0.3
+            else:
+                inner_val_split = 0.2
         else:
-            inner_val_split = 0.2
+            inner_val_split = float(val_split)
+            if inner_val_split > 0 and n_train < 5:
+                logger.warning(
+                    f"val_split={inner_val_split} with only {n_train} train samples — "
+                    f"forcing 0 to avoid an empty inner-validation set."
+                )
+                inner_val_split = 0.0
 
         nn.fit(X_params[train_idx], train_targets,
                validation_split=inner_val_split, epochs=epochs, verbose=0,

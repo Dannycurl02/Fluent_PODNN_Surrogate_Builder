@@ -93,8 +93,15 @@ class MainWindow(QMainWindow):
         self.project = None
         self._unlocked = {0}  # Setup always unlocked
 
-        self.setWindowTitle("Fluent PODNN Surrogate Builder")
+        self.setWindowTitle("CFDTwin")
         self.setMinimumSize(1200, 800)
+
+        # Window icon — shows in taskbar / title bar.
+        from pathlib import Path
+        from PySide6.QtGui import QIcon
+        icon_path = Path(__file__).resolve().parent / "assets" / "logo_icon.png"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
 
         self._build_header()
         self._build_sidebar()
@@ -120,9 +127,13 @@ class MainWindow(QMainWindow):
         font.setBold(True)
         self._project_label.setFont(font)
 
-        self._settings_btn = QPushButton("Settings")
+        # Only relevant on the Train tab (per-model-type epochs / test split /
+        # val split / NN architecture). Hidden on other tabs to keep the header
+        # clean. Visibility is toggled in _on_sidebar_click + go_to_step.
+        self._settings_btn = QPushButton("Model Settings")
         self._settings_btn.setProperty("flat", True)
-        self._settings_btn.setFixedSize(100, 32)
+        self._settings_btn.setFixedSize(140, 32)
+        self._settings_btn.hide()
 
         self._fluent_status = FluentStatusWidget()
 
@@ -235,6 +246,7 @@ class MainWindow(QMainWindow):
             self._sidebar.setCurrentRow(index)
             self._stack.setCurrentIndex(index)
             self._update_sidebar_styles()
+            self._update_settings_btn_visibility(index)
             self.step_changed.emit(index)
 
     def toggle_log_panel(self):
@@ -316,4 +328,10 @@ class MainWindow(QMainWindow):
         self._sidebar.setCurrentRow(row)
         self._stack.setCurrentIndex(row)
         self._update_sidebar_styles()
+        self._update_settings_btn_visibility(row)
         self.step_changed.emit(row)
+
+    def _update_settings_btn_visibility(self, step_index):
+        """Model Settings is only meaningful on the Train tab (step 3)."""
+        TRAIN_STEP = 3
+        self._settings_btn.setVisible(step_index == TRAIN_STEP)

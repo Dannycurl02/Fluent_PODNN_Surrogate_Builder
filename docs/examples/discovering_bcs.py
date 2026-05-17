@@ -2,10 +2,18 @@
 
 Run this once for an unfamiliar case file — copy the bc names, parameter
 paths, surface names, etc. into your set_inputs / set_outputs calls.
+
+The last section shows the higher-level ``Project.list_available_inputs()``
+helper, which gives you the same data already grouped by category and parsed
+into a shape you can feed straight into ``set_inputs``.
 """
+
+import tempfile
 
 import ansys.fluent.core as pyfluent
 from ansys.fluent.core import examples
+
+import cfdtwin
 
 CASE_FILE = examples.download_file("mixing_elbow.cas.h5", "pyfluent/mixing_elbow")
 
@@ -55,3 +63,24 @@ except Exception as e:
     print(f"  (unable to list: {e})")
 
 solver.exit()
+
+# --- Same data via the cfdtwin API ----------------------------------------
+# Project.list_available_inputs() wraps the raw PyFluent calls above. It
+# returns one list with BCs and Fluent input parameters (named expressions
+# flagged input_parameter=True) already merged, each entry tagged with a
+# `category`. Feed entries straight back into set_inputs by attaching a range.
+print("\n=== cfdtwin.Project.list_available_inputs() ===")
+with tempfile.TemporaryDirectory() as tmp:
+    project = cfdtwin.Project.create(tmp, name="discovery_demo")
+    project.set_case_file(CASE_FILE)
+    project.connect_fluent()
+    try:
+        for item in project.list_available_inputs():
+            cat = item['category']
+            if cat == 'Input Parameter':
+                print(f"  [IP] {item['name']:<20} unit={item.get('unit','')} "
+                      f"current={item.get('current_value')}")
+            else:
+                print(f"  [BC] {item['name']:<20} type={item['type']}")
+    finally:
+        project.disconnect_fluent()

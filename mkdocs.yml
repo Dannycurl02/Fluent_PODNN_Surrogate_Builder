@@ -5,13 +5,18 @@ edit_uri: edit/master/docs/
 
 theme:
   name: material
+  logo: assets/logo_icon.png
+  favicon: assets/logo_icon.png
   palette:
+    # CFDTwin brand: blue (#1583B5 / #1E5C79). Material's named colors don't
+    # include these exact shades — using the closest fit; finer tuning can
+    # come from theme.extra.css later if needed.
     - scheme: default
-      primary: deep orange
-      accent: deep orange
+      primary: blue
+      accent: light blue
     - scheme: slate
-      primary: deep orange
-      accent: deep orange
+      primary: blue
+      accent: light blue
   features:
     - navigation.sections
     - navigation.expand
@@ -46,6 +51,7 @@ nav:
       - Full workflow: tutorials/full_workflow.md
       - Training tuning: tutorials/training_tuning.md
       - Discovering BC names from Fluent: tutorials/fluent_session.md
+  - Examples: examples/README.md
   - API reference:
       - Project: api/project.md
       - Result classes: api/results.md

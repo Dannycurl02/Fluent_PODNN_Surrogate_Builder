@@ -13,7 +13,7 @@ import cfdtwin
 project_path = Path("elbow_study")
 if not (project_path / "project_info.json").exists():
     raise SystemExit(
-        "Run examples/full_workflow.py first to populate elbow_study with sims."
+        "Run docs/examples/full_workflow.py first to populate elbow_study with sims."
     )
 project = cfdtwin.Project.open(project_path)
 

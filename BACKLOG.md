@@ -1,10 +1,100 @@
 # Backlog
 
-Long-term fixes and known risks to address in future updates.
+Two sections: **Pre-v0.1.0 release tasks** (to do before tagging) and
+**Long-term fixes & risks** (post-launch).
 
 ---
 
-## 1. Fluent Case File Version Drift
+# Pre-v0.1.0 release tasks
+
+## R1. Extensive testing of API + GUI
+
+Verify both surfaces behave correctly end-to-end before tagging v0.1.0.
+
+**API (real Fluent required):**
+- `pytest tests/integration` — runs the full pipeline against PyFluent's
+  mixing_elbow case
+- Each example script runs end-to-end:
+  - `python docs/examples/quickstart.py`
+  - `python docs/examples/full_workflow.py`
+  - `python docs/examples/training_tuning.py` (depends on full_workflow having run)
+  - `python docs/examples/discovering_bcs.py`
+- Manual edge cases:
+  - `predict()` before training → KeyError on missing model
+  - `train()` with no sim data → RuntimeError
+  - `train(model_name="x")` twice → auto-suffix + warning
+  - Per-output config with both `pod.modes` and `pod.variance` → ValueError
+  - Predict with mismatched param keys → sensible error
+
+**GUI (manual smoke):**
+- Fresh project end-to-end: Setup → DOE → Simulate (small N) → Train → Analyze
+- Reopen Test100: every page loads, Analyze auto-focuses first model
+- Regression check on every fix from `gui-fixes` branch (Browse button width,
+  duplicate dataset path, Fluent disconnect detection, per-iter progress bar,
+  Train per-(location, field) row, loss plot linear scale, project delete
+  2-stage Yes, Validate→Analyze rename, R² Y-axis padding, click-to-expand
+  on middle plots, predict bar follows top-left selection, Export Model)
+- Failure modes: kill Fluent mid-sim, click Stop, restart and resume
+
+**CI sanity:** push a no-op commit, confirm the unit-test matrix passes on
+3.10 / 3.11 / 3.12.
+
+## R2. Metrics explainer in the docs
+
+The Analyze tab shows two R² values per model — per-sample R² (the middle
+plot, one dot per test sample) and whole-model R² (the top-right metrics
+table) — and they measure two different things. No docs page explains this
+or any of the other metrics (RMSE, MAE).
+
+Add a `docs/concepts/metrics.md` page covering:
+- R² basic definition with equation
+- **Per-sample R²** — for one prediction, "did the model get the field SHAPE
+  right?" Show the equation reducing along the spatial dimension with the
+  per-sample mean as baseline. Show what happens when the model collapses to
+  predicting a uniform field (R² → 0).
+- **Whole-model R²** — per-point R² averaged over spatial points; "does the
+  model TRACK parameter-driven variation at each location?" Equation reducing
+  along the test-set dimension with the per-point cross-sample mean as
+  baseline. Show what happens when the model ignores inputs (R² → 0).
+- A failure-mode table showing which metric catches which pathology
+  (uniform-field prediction, input-ignoring prediction, etc.).
+- A concrete worked example with numbers.
+- RMSE and MAE: shorter sections, definitions + when each is more useful
+  (RMSE penalizes outliers, MAE is in target units).
+
+Link from:
+- `docs/tutorials/training_tuning.md` (when you see low R², which kind?)
+- `docs/api/results.md` (the `Metrics` dataclass docstring should reference
+  the concepts page)
+- Maybe a "What do these mean?" callout next to the metrics table on the
+  Analyze page itself (small `(?)` icon → opens the concepts page).
+
+Estimated effort: ~1-2 hours including the equations and figure. Worth doing
+before v0.1.0 since the two-R² distinction trips up everyone.
+
+---
+
+## R3. MkDocs palette — exact brand hex
+
+Material's named-color palette doesn't include the CFDTwin brand blues
+(`#1583B5` / `#1E5C79`) exactly — `mkdocs.yml` currently uses the closest
+named colors (`primary: blue` / `accent: light blue`). Pixel-perfect tuning
+to the brand hex needs an `extra_css` override:
+
+- Add `docs/stylesheets/extra.css` with `--md-primary-fg-color`,
+  `--md-primary-fg-color--light`, `--md-primary-fg-color--dark`, and
+  `--md-accent-fg-color` set to the brand hex.
+- Wire it via `extra_css:` in `mkdocs.yml`.
+- Verify in both `default` and `slate` schemes.
+
+Effort: ~30 min. Low priority — current colors are close enough that v0.1.0
+ships fine without this; do it when the site is live and you can eyeball it.
+
+---
+
+# Long-term fixes & risks
+
+## L1. Fluent Case File Version Drift
 
 **Risk**: High
 
@@ -25,7 +115,7 @@ The project stores a reference path to the `.cas` file but does not track its co
 
 ---
 
-## 2. Unsupported Fluent Configuration Warnings
+## L2. Unsupported Fluent Configuration Warnings
 
 **Risk**: High
 
@@ -46,7 +136,7 @@ The surrogate workflow assumes steady-state, fixed-mesh simulations. Several Flu
 
 ---
 
-## 3. Test Run Fluent Comparison System
+## L3. Test Run Fluent Comparison System
 
 **Risk**: Medium
 
@@ -67,7 +157,27 @@ The Fluent comparison system in the Validate page (`run_fluent_comparison`) reus
 
 ---
 
-## 4. Refactor GUI to use the cfdtwin Project API
+## L5. Move `gui/` into `cfdtwin.gui` namespace
+
+**Risk**: Low (poor citizenship in shared environments)
+
+The GUI ships as a top-level `gui` package in the wheel so the
+`cfdtwin-gui` entry point can find it. After `pip install cfdtwin`, the
+user's site-packages gets a generic `gui/` folder — likely to collide with
+other packages' top-level names.
+
+Fix: move `gui/` → `cfdtwin/gui/`, update every `from gui.X` to
+`from cfdtwin.gui.X` (~30 places), update the entry point to
+`cfdtwin-gui = "cfdtwin.gui.app:run"`, update the .bat to
+`pythonw -m cfdtwin.gui`. Also update `python -m gui` references in README
+and BACKLOG L4.
+
+Defer until after v0.1.0 unless another project starts colliding with our
+`gui` namespace in user site-packages.
+
+---
+
+## L4. Refactor GUI to use the cfdtwin Project API
 
 **Risk**: Medium (drift over time)
 

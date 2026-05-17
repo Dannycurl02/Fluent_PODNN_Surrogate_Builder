@@ -1,4 +1,6 @@
-# cfdtwin
+<p align="center">
+  <img src="assets/logo_wordmark.png" alt="CFDTwin" width="420"/>
+</p>
 
 Build neural-network surrogate models from ANSYS Fluent simulations. Same
 pipeline as the GUI app, accessible from a script.

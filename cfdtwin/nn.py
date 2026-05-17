@@ -23,26 +23,31 @@ import tensorflow as tf
 from tensorflow import keras
 
 
-# Preset configurations matching original model architectures
+# Preset configurations.
+# batch_size='adaptive' resolves to max(16, n_samples // 50) at fit time —
+# set it to an int (e.g. 8 or 16) to override that and use a fixed batch.
 PRESETS = {
     '1d': {
-        'hidden_layers': [128, 128, 64, 32, 16],
-        'l2': 0.0001,
-        'dropout': [0.05, 0.05, 0.05, 0.05, 0],
+        # A 1D output is a single scalar — typically a smooth function of 2-5
+        # inputs. Don't overbuild: 2 small layers with no dropout converges
+        # fast and won't overfit on the small DOEs cfdtwin users tend to run.
+        'hidden_layers': [32, 16],
+        'l2': 1e-4,
+        'dropout': [0.0, 0.0],
         'batch_size': 'adaptive',
-        'es_patience': 50,
+        'es_patience': 30,
         'es_start_epoch': 0,
         'es_min_delta': 1e-7,
-        'lr_patience': 15,
+        'lr_patience': 10,
         'lr_factor': 0.5,
         'lr_min': 1e-7,
-        'learning_rate': 0.001,
+        'learning_rate': 1e-3,
     },
     '2d': {
         'hidden_layers': [64, 64, 32],
         'l2': 0.001,
         'dropout': [0.1, 0.1, 0],
-        'batch_size': 8,
+        'batch_size': 'adaptive',
         'es_patience': 80,
         'es_start_epoch': 30,
         'es_min_delta': 1e-7,
@@ -55,7 +60,7 @@ PRESETS = {
         'hidden_layers': [128, 128, 64, 64],
         'l2': 0.001,
         'dropout': [0.15, 0.15, 0.1, 0],
-        'batch_size': 8,
+        'batch_size': 'adaptive',
         'es_patience': 100,
         'es_start_epoch': 50,
         'es_min_delta': 1e-7,

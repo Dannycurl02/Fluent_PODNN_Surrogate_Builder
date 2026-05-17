@@ -25,7 +25,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.settings = settings
 
-        self.setWindowTitle("Settings")
+        self.setWindowTitle("Model Settings")
         self.setMinimumSize(520, 480)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
 
@@ -128,7 +128,45 @@ class SettingsDialog(QDialog):
             pod_spin.setButtonSymbols(QSpinBox.NoButtons)
             form.addRow("POD mode count:", pod_spin)
 
+        # Training-loop settings (always editable, NOT tied to Preset/Custom mode).
+        # These are training controls rather than architecture choices.
+        training_label = QLabel("Training")
+        f = training_label.font()
+        f.setBold(True)
+        training_label.setFont(f)
         layout.addLayout(form)
+        layout.addSpacing(6)
+        layout.addWidget(training_label)
+
+        train_form = QFormLayout()
+        train_form.setSpacing(10)
+
+        epochs_spin = QSpinBox()
+        epochs_spin.setRange(10, 10000)
+        epochs_spin.setValue(500)
+        epochs_spin.setButtonSymbols(QSpinBox.NoButtons)
+        train_form.addRow("Max epochs:", epochs_spin)
+
+        test_split_spin = QDoubleSpinBox()
+        test_split_spin.setDecimals(2)
+        test_split_spin.setRange(0.05, 0.5)
+        test_split_spin.setSingleStep(0.05)
+        test_split_spin.setValue(0.2)
+        test_split_spin.setButtonSymbols(QDoubleSpinBox.NoButtons)
+        train_form.addRow("Test split:", test_split_spin)
+
+        # 'adaptive' for val_split shows when the spinbox value == its minimum,
+        # same pattern as batch_size above.
+        val_split_spin = QDoubleSpinBox()
+        val_split_spin.setDecimals(2)
+        val_split_spin.setRange(0.0, 0.5)
+        val_split_spin.setSingleStep(0.05)
+        val_split_spin.setSpecialValueText("adaptive")
+        val_split_spin.setValue(val_split_spin.minimum())  # default = adaptive
+        val_split_spin.setButtonSymbols(QDoubleSpinBox.NoButtons)
+        train_form.addRow("Validation split:", val_split_spin)
+
+        layout.addLayout(train_form)
         layout.addStretch()
 
         # Store widget references
@@ -142,9 +180,13 @@ class SettingsDialog(QDialog):
             'es_patience': es_patience_spin,
             'lr_patience': lr_patience_spin,
             'pod': pod_spin,
+            'epochs': epochs_spin,
+            'test_split': test_split_spin,
+            'val_split': val_split_spin,
         }
 
-        # All hyperparam widgets for enable/disable
+        # NN architecture widgets are gated by Preset/Custom mode.
+        # Training-loop widgets stay editable in both modes.
         param_widgets = [hidden_edit, dropout_edit, l2_spin, lr_spin,
                          batch_spin, es_patience_spin, lr_patience_spin]
         if pod_spin:
@@ -213,6 +255,15 @@ class SettingsDialog(QDialog):
         if widgets['pod'] is not None:
             widgets['pod'].setValue(cfg.get('pod_modes', 20))
 
+        # Training-loop settings — also persisted in nn_settings[preset_key].
+        widgets['epochs'].setValue(int(cfg.get('epochs', 500)))
+        widgets['test_split'].setValue(float(cfg.get('test_size', 0.2)))
+        vs = cfg.get('val_split', 'adaptive')
+        if vs == 'adaptive' or vs is None:
+            widgets['val_split'].setValue(widgets['val_split'].minimum())
+        else:
+            widgets['val_split'].setValue(float(vs))
+
     def _read_model_widgets(self, tab):
         """Read current values from a model tab into a dict."""
         w = tab.widgets
@@ -244,6 +295,12 @@ class SettingsDialog(QDialog):
 
         if w['pod'] is not None:
             cfg['pod_modes'] = w['pod'].value()
+
+        # Training-loop settings (always saved regardless of preset/custom mode).
+        cfg['epochs'] = w['epochs'].value()
+        cfg['test_size'] = w['test_split'].value()
+        vs_val = w['val_split'].value()
+        cfg['val_split'] = 'adaptive' if vs_val == w['val_split'].minimum() else vs_val
 
         return cfg
 

@@ -2,7 +2,8 @@
 Theme Module
 ============
 Dark theme QSS stylesheet for the application.
-Off-black backgrounds, orange gradient accents, white text, soft rounded corners.
+Off-black backgrounds, blue gradient accents (CFDTwin brand colors), white
+text, soft rounded corners.
 """
 
 # --- Color palette ---
@@ -10,16 +11,27 @@ BG_DARK = "#1a1a1a"
 BG_PANEL = "#242424"
 BG_INPUT = "#2a2a2a"
 BORDER = "#333333"
-BORDER_FOCUS = "#FF9F43"
+BORDER_FOCUS = "#1583B5"
 
 TEXT_PRIMARY = "#FFFFFF"
 TEXT_SECONDARY = "#B0B0B0"
 TEXT_DISABLED = "#666666"
 
-ORANGE_LIGHT = "#FF9F43"
-ORANGE_DARK = "#E67E22"
-ORANGE_HOVER = "#FFB366"
-ORANGE_PRESSED = "#CC6A1A"
+# CFDTwin brand colors.
+# BLUE_LIGHT is the primary bright accent (buttons, focused borders, scatter
+# points). BLUE_DARK is the secondary, gradient end. Hover/Pressed are derived
+# by lightening/darkening ~15% so button states read clearly.
+BLUE_LIGHT = "#1583B5"
+BLUE_DARK = "#1E5C79"
+BLUE_HOVER = "#3DA3D5"
+BLUE_PRESSED = "#144A60"
+
+# Legacy aliases — keep so other modules that imported theme.ORANGE_* still
+# work. New code should use BLUE_* names.
+ORANGE_LIGHT = BLUE_LIGHT
+ORANGE_DARK = BLUE_DARK
+ORANGE_HOVER = BLUE_HOVER
+ORANGE_PRESSED = BLUE_PRESSED
 
 RED_ERROR = "#E74C3C"
 GREEN_SUCCESS = "#2ECC71"

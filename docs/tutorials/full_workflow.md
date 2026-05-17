@@ -4,7 +4,7 @@ Walks the same pipeline as [Quickstart](../quickstart.md) but explains each
 step and shows what's on disk at each stage. Uses PyFluent's downloadable
 mixing_elbow case so you can reproduce this exactly.
 
-> **Run it:** [`examples/full_workflow.py`](https://github.com/UARK-NED3/CFDTwin/blob/master/examples/full_workflow.py) is the runnable version of this tutorial.
+> **Run it:** [`docs/examples/full_workflow.py`](https://github.com/UARK-NED3/CFDTwin/blob/master/docs/examples/full_workflow.py) is the runnable version of this tutorial.
 
 ## Get the case file
 
