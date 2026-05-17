@@ -141,9 +141,11 @@ class TrainingWorker(QThread):
     finished = Signal(dict)
     error = Signal(str)
 
-    def __init__(self, project_dir, model_name, model_selection,
+    def __init__(self, project_dir, model_name, model_selection=None,
                  test_size=0.2, epochs=500, exclude_range=None,
-                 output_filter=None, val_split='adaptive', parent=None):
+                 excluded_ids=None,
+                 output_filter=None, val_split='adaptive',
+                 per_output_nn=None, per_output_pod=None, parent=None):
         super().__init__(parent)
         self.project_dir = Path(project_dir)
         self.model_name = model_name
@@ -151,8 +153,11 @@ class TrainingWorker(QThread):
         self.test_size = test_size
         self.epochs = epochs
         self.exclude_range = exclude_range
+        self.excluded_ids = excluded_ids
         self.output_filter = output_filter
         self.val_split = val_split
+        self.per_output_nn = per_output_nn
+        self.per_output_pod = per_output_pod
 
     def run(self):
         try:
@@ -191,10 +196,13 @@ class TrainingWorker(QThread):
                 test_size=self.test_size,
                 epochs=self.epochs,
                 exclude_range=self.exclude_range,
+                excluded_ids=self.excluded_ids,
                 on_progress=on_progress,
                 output_filter=self.output_filter,
                 on_epoch=on_epoch,
                 val_split=self.val_split,
+                per_output_nn=self.per_output_nn,
+                per_output_pod=self.per_output_pod,
             )
             self.finished.emit(summary)
         except Exception as e:

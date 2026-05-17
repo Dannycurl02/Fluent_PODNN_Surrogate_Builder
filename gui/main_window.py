@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QIcon, QFont
 
+from cfdtwin import __version__ as _cfdtwin_version
+
 from . import theme
 
 logger = logging.getLogger(__name__)
@@ -93,7 +95,7 @@ class MainWindow(QMainWindow):
         self.project = None
         self._unlocked = {0}  # Setup always unlocked
 
-        self.setWindowTitle("CFDTwin")
+        self.setWindowTitle(f"CFDTwin v{_cfdtwin_version}")
         self.setMinimumSize(1200, 800)
 
         # Window icon — shows in taskbar / title bar.

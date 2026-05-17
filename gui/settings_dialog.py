@@ -90,6 +90,14 @@ class SettingsDialog(QDialog):
         dropout_edit.setPlaceholderText("e.g. 0.1, 0.1, 0.05, 0")
         form.addRow("Dropout:", dropout_edit)
 
+        # Real-time mismatch warning: hidden_layers and dropout must have the
+        # same length. SurrogateNN tolerates a shorter dropout list (extras
+        # ignored), but a mismatch is almost always a typo, so warn loudly.
+        mismatch_label = QLabel("")
+        mismatch_label.setStyleSheet("color: #C62828; font-weight: bold;")
+        mismatch_label.setWordWrap(True)
+        form.addRow("", mismatch_label)
+
         l2_spin = QDoubleSpinBox()
         l2_spin.setDecimals(6)
         l2_spin.setRange(0, 1)
@@ -174,6 +182,7 @@ class SettingsDialog(QDialog):
             'mode': mode_combo,
             'hidden': hidden_edit,
             'dropout': dropout_edit,
+            'mismatch_label': mismatch_label,
             'l2': l2_spin,
             'lr': lr_spin,
             'batch': batch_spin,
@@ -184,6 +193,33 @@ class SettingsDialog(QDialog):
             'test_split': test_split_spin,
             'val_split': val_split_spin,
         }
+
+        # Recompute the warning whenever either field or the mode changes.
+        def update_mismatch_warning():
+            if mode_combo.currentIndex() != 1:  # only in Custom mode
+                mismatch_label.setText("")
+                return
+            try:
+                h = [int(x.strip()) for x in hidden_edit.text().split(',') if x.strip()]
+            except ValueError:
+                mismatch_label.setText("Hidden layers: each entry must be an integer.")
+                return
+            try:
+                d = [float(x.strip()) for x in dropout_edit.text().split(',') if x.strip()]
+            except ValueError:
+                mismatch_label.setText("Dropout: each entry must be a number between 0 and 1.")
+                return
+            if len(h) != len(d):
+                mismatch_label.setText(
+                    f"Mismatch: {len(h)} hidden layer(s) but {len(d)} dropout value(s). "
+                    "These must match before saving."
+                )
+            else:
+                mismatch_label.setText("")
+
+        hidden_edit.textChanged.connect(update_mismatch_warning)
+        dropout_edit.textChanged.connect(update_mismatch_warning)
+        mode_combo.currentIndexChanged.connect(lambda _i: update_mismatch_warning())
 
         # NN architecture widgets are gated by Preset/Custom mode.
         # Training-loop widgets stay editable in both modes.
@@ -305,7 +341,17 @@ class SettingsDialog(QDialog):
         return cfg
 
     def _save_and_accept(self):
-        # NN
+        # Block save if any Custom-mode tab has hidden_layers / dropout
+        # mismatch — same warning the inline label shows, hoisted up so the
+        # user can't accidentally bypass it via OK.
+        for tab in (self._1d_tab, self._2d_tab, self._3d_tab):
+            msg = tab.widgets['mismatch_label'].text()
+            if msg:
+                from PySide6.QtWidgets import QMessageBox
+                self._tabs.setCurrentWidget(tab)
+                QMessageBox.warning(self, "Mismatch in Custom config", msg)
+                return
+
         nn = {
             '1d': self._read_model_widgets(self._1d_tab),
             '2d': self._read_model_widgets(self._2d_tab),

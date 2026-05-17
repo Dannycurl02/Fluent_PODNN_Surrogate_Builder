@@ -56,6 +56,7 @@ class ProjectDialog(QDialog):
 
         # Wordmark — replaces the old bold-text title.
         from PySide6.QtGui import QPixmap
+        from cfdtwin import __version__ as _cfdtwin_version
         wordmark_path = Path(__file__).resolve().parent / "assets" / "logo_wordmark.png"
         title = QLabel()
         title.setAlignment(Qt.AlignCenter)
@@ -71,6 +72,12 @@ class ProjectDialog(QDialog):
             font.setBold(True)
             title.setFont(font)
         layout.addWidget(title)
+
+        # Subtle version caption under the wordmark.
+        version_label = QLabel(f"v{_cfdtwin_version}")
+        version_label.setAlignment(Qt.AlignCenter)
+        version_label.setProperty("secondary", True)
+        layout.addWidget(version_label)
 
         # --- Action buttons ---
         btn_row = QHBoxLayout()

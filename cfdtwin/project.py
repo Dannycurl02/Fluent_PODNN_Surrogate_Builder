@@ -493,6 +493,7 @@ class Project:
         test_size: float = 0.2,
         random_seed: int = 42,
         exclude_range: tuple[int, int] | None = None,
+        excluded_ids: list[int] | None = None,
         on_progress: Callable | None = None,
         on_epoch: Callable | None = None,
         verbose: int = 1,
@@ -526,6 +527,9 @@ class Project:
                     },
                 }
         epochs, test_size, random_seed, exclude_range : training defaults
+        excluded_ids : list[int], optional
+            Arbitrary 1-indexed sim_ids to withhold from training. Combined
+            with `exclude_range` (a sample is dropped if either matches).
         """
         if not self._wp.dataset_dir.exists() or not list(self._wp.dataset_dir.glob("sim_*.npz")):
             raise RuntimeError("No simulation data found; call run_simulations() first")
@@ -540,7 +544,11 @@ class Project:
             )
 
         # Discover available output keys to filter and to validate user input.
-        data = _training.load_training_data(self._wp.project_path, exclude_range=exclude_range)
+        data = _training.load_training_data(
+            self._wp.project_path,
+            exclude_range=exclude_range,
+            excluded_ids=excluded_ids,
+        )
         available_keys = list(data['outputs'].keys())
 
         outputs_cfg = _normalize_outputs(outputs, available_keys)
@@ -558,6 +566,7 @@ class Project:
             test_size=test_size,
             epochs=epochs,
             exclude_range=exclude_range,
+            excluded_ids=excluded_ids,
             on_progress=on_progress,
             on_epoch=on_epoch,
             output_filter=list(outputs_cfg.keys()),

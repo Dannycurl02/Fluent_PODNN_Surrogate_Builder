@@ -224,6 +224,15 @@ class TrainPage(QWidget):
                 ids.append(sid)
         return ids
 
+    def _get_excluded_ids(self):
+        """Return list of sim IDs in the excluded list (left column)."""
+        ids = []
+        for i in range(self._all_list.count()):
+            sid = self._all_list.item(i).data(Qt.UserRole)
+            if sid is not None:
+                ids.append(sid)
+        return ids
+
     # --- Refresh ---
 
     def refresh(self):
@@ -353,6 +362,10 @@ class TrainPage(QWidget):
         if not training_ids:
             QMessageBox.warning(self, "No Data", "Move samples to the Training list first.")
             return
+        # Whatever sits in the left column at click time gets withheld from
+        # the trainer. Stored on the page so _run_next_training can pass it
+        # to every queued model run.
+        self._excluded_ids = self._get_excluded_ids()
 
         if not self.project.model_setup_file.exists():
             QMessageBox.warning(self, "No Setup", "Complete Setup first.")
@@ -407,14 +420,31 @@ class TrainPage(QWidget):
         test_size = float(type_cfg.get('test_size', 0.2))
         val_split = type_cfg.get('val_split', 'adaptive')
 
+        # Architecture overrides — only effective when Custom mode is selected
+        # for this preset type. In Preset mode every architecture knob is
+        # disabled in the dialog, so we pass nothing and the trainer uses
+        # PRESETS[preset_type] verbatim.
+        per_output_nn = None
+        per_output_pod = None
+        if type_cfg.get('mode') == 'custom':
+            arch_keys = ('hidden_layers', 'dropout', 'l2', 'learning_rate',
+                         'batch_size', 'es_patience', 'lr_patience')
+            nn_overrides = {k: type_cfg[k] for k in arch_keys if k in type_cfg}
+            if nn_overrides:
+                per_output_nn = {model_key: nn_overrides}
+            if 'pod_modes' in type_cfg and preset_type in ('2d', '3d'):
+                per_output_pod = {model_key: {'modes': int(type_cfg['pod_modes'])}}
+
         self._worker = TrainingWorker(
             project_dir=self.project.project_path,
             model_name=model_name,
-            model_selection=nn_settings,
             test_size=test_size,
             epochs=epochs,
             val_split=val_split,
             output_filter=[model_key],
+            excluded_ids=getattr(self, '_excluded_ids', None) or None,
+            per_output_nn=per_output_nn,
+            per_output_pod=per_output_pod,
         )
         self._worker.model_started.connect(self._on_model_started)
         self._worker.epoch_update.connect(self._on_epoch_update)

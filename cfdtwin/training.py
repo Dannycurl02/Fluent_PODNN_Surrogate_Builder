@@ -88,7 +88,7 @@ def detect_output_type(data_shape):
         return '3D', min(15, n_points // 1000)
 
 
-def load_training_data(dataset_dir, exclude_range=None):
+def load_training_data(dataset_dir, exclude_range=None, excluded_ids=None):
     """
     Load all simulation data from case directory.
 
@@ -98,6 +98,9 @@ def load_training_data(dataset_dir, exclude_range=None):
         Case directory
     exclude_range : tuple of (int, int), optional
         Range of simulation numbers to exclude (start, end), 1-indexed
+    excluded_ids : iterable of int, optional
+        Arbitrary sim_ids (1-indexed) to exclude. Applied in addition to
+        exclude_range — a sample is dropped if either filter matches.
 
     Returns
     -------
@@ -250,6 +253,7 @@ def load_training_data(dataset_dir, exclude_range=None):
     valid_file_indices = []
     invalid_count = 0
     excluded_count = 0
+    excluded_ids_set = set(int(s) for s in excluded_ids) if excluded_ids else set()
 
     for i, output_file in enumerate(output_files):
         if file_sim_ids[i] is None:
@@ -258,6 +262,9 @@ def load_training_data(dataset_dir, exclude_range=None):
 
         sim_number = file_sim_ids[i] + 1  # use actual sim_id, not enumerate index
         if exclude_range and exclude_range[0] <= sim_number <= exclude_range[1]:
+            excluded_count += 1
+            continue
+        if excluded_ids_set and sim_number in excluded_ids_set:
             excluded_count += 1
             continue
 
@@ -328,6 +335,7 @@ def load_training_data(dataset_dir, exclude_range=None):
 
 def train_all_models(dataset_dir, model_name, model_selection=None,
                      test_size=0.2, epochs=500, exclude_range=None,
+                     excluded_ids=None,
                      on_progress=None, output_filter=None, on_epoch=None,
                      random_seed=42, per_output_pod=None, per_output_nn=None,
                      val_split='adaptive'):
@@ -349,6 +357,8 @@ def train_all_models(dataset_dir, model_name, model_selection=None,
         Training epochs
     exclude_range : tuple of (int, int), optional
         Range of simulation numbers to exclude
+    excluded_ids : iterable of int, optional
+        Arbitrary 1-indexed sim_ids to exclude (combined with exclude_range).
     on_progress : callable, optional
         Called as on_progress(model_name, status_str) for each model
     random_seed : int, default 42
@@ -377,7 +387,9 @@ def train_all_models(dataset_dir, model_name, model_selection=None,
     per_output_nn = per_output_nn or {}
 
     # Load data
-    data = load_training_data(dataset_dir, exclude_range=exclude_range)
+    data = load_training_data(
+        dataset_dir, exclude_range=exclude_range, excluded_ids=excluded_ids,
+    )
     X_params = data['parameters']
     outputs = data['outputs']
     output_info = data['output_info']

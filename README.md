@@ -10,12 +10,11 @@ Two interfaces, one pipeline:
 
 **Docs:** https://uark-ned3.github.io/CFDTwin/
 
-**GUI walkthrough (4-part video series):**
+**GUI walkthrough (3-part video series):**
 
-1. [Introduction and Case Assignment](https://youtu.be/aIredg034k8)
-2. [Case Input and Output Setup](https://youtu.be/XN3sqVYiBiY)
-3. [DOE Setup and Batch Simulation](https://youtu.be/fDZwWNaByOo)
-4. [NN Training and Model Validation](https://youtu.be/V4EameyTECw)
+1. [Introduction, Project Creation, Case File Assignment](https://youtu.be/HA4LFfzCYxY)
+2. [DOE Setup, Batch Simulation, NN Training](https://youtu.be/MMm91G_h8aM)
+3. [Model Metrics and Inference Analysis](https://youtu.be/TXTkZdUq8iA)
 
 ## Install
 
