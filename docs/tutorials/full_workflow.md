@@ -72,8 +72,10 @@ project.generate_doe(method="factorial", points_per_param=4)
 ## Run simulations
 
 ```python
-project.connect_fluent()
-sim = project.run_simulations(iterations=100)
+# mixing_elbow.cas.h5 is a single-precision case file. Fluent refuses to
+# read a single-precision case in a double-precision session, so override.
+project.connect_fluent(precision="single")
+sim = project.run_simulations(iterations=100, verbose=True)
 print(sim.summary())
 ```
 

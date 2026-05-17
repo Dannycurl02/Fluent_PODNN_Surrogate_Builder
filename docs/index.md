@@ -28,20 +28,21 @@ import cfdtwin
 project = cfdtwin.Project.create("./my_study", name="elbow_study")
 project.set_case_file("mixing_elbow.cas.h5")
 project.set_inputs({
-    "cold-inlet|velocity": (0.2, 0.6),
-    "hot-inlet|velocity":  (0.4, 1.2),
+    "cold-inlet|momentum > velocity_magnitude": (0.2, 0.6),
+    "hot-inlet|momentum > velocity_magnitude":  (0.4, 1.2),
 })
 project.set_outputs([
     {"name": "outlet", "category": "Surface",
      "field_variables": ["temperature"]},
 ])
 project.generate_doe(n=50, method="lhs")
-project.run_simulations()
+project.connect_fluent(precision="single")   # mixing_elbow is single-precision
+project.run_simulations(verbose=True)
 project.train(model_name="elbow_v1")
 
 pred = project.predict("elbow_v1", {
-    "cold-inlet|velocity": 0.4,
-    "hot-inlet|velocity":  0.8,
+    "cold-inlet|momentum > velocity_magnitude": 0.4,
+    "hot-inlet|momentum > velocity_magnitude":  0.8,
 })
 print(pred.values.shape)
 ```

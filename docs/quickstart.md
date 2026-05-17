@@ -12,8 +12,8 @@ project = cfdtwin.Project.create("./my_study", name="study1")
 project.set_case_file("mixing_elbow.cas.h5")
 
 project.set_inputs({
-    "cold-inlet|velocity": (0.2, 0.6),
-    "hot-inlet|velocity":  (0.4, 1.2),
+    "cold-inlet|momentum > velocity_magnitude": (0.2, 0.6),
+    "hot-inlet|momentum > velocity_magnitude":  (0.4, 1.2),
 })
 project.set_outputs([
     {"name": "outlet", "category": "Surface",
@@ -21,14 +21,16 @@ project.set_outputs([
 ])
 
 project.generate_doe(n=20, method="lhs")
-project.run_simulations()
+# mixing_elbow.cas.h5 is single-precision; drop the kwarg for double-precision cases.
+project.connect_fluent(precision="single")
+project.run_simulations(verbose=True)
 result = project.train(model_name="run1")
 
 print(result.summary())
 
 pred = project.predict("run1", {
-    "cold-inlet|velocity": 0.4,
-    "hot-inlet|velocity":  0.8,
+    "cold-inlet|momentum > velocity_magnitude": 0.4,
+    "hot-inlet|momentum > velocity_magnitude":  0.8,
 })
 print(pred.values.shape)         # (1, n_points)
 ```
