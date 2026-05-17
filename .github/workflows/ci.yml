@@ -28,4 +28,8 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run unit tests
-        run: pytest tests/unit -v
+        # -p no:pytestqt disables pytest-qt auto-loading. pytest-qt is in
+        # the dev extra for the local GUI test suite, but importing Qt at
+        # session start fails on the bare CI runner (no libEGL etc.).
+        # Unit tests don't need qtbot.
+        run: pytest tests/unit -v -p no:pytestqt
