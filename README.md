@@ -9,16 +9,36 @@ Two ways to drive the same pipeline:
 - **API** — Python library, the same pipeline as ten method calls in a script.
 
 **Docs:** https://uark-ned3.github.io/CFDTwin/
-**GUI walkthrough (video):** _coming soon_
+
+**GUI walkthrough (4-part video series):**
+
+1. [Introduction and Case Assignment](https://youtu.be/aIredg034k8)
+2. [Case Input and Output Setup](https://youtu.be/XN3sqVYiBiY)
+3. [DOE Setup and Batch Simulation](https://youtu.be/fDZwWNaByOo)
+4. [NN Training and Model Validation](https://youtu.be/V4EameyTECw)
 
 ## Install
 
-Requires Python 3.10+ and a working ANSYS Fluent installation.
+Requires Python 3.10+ and a working ANSYS Fluent installation. Three paths
+depending on what you want:
+
+| Command                                | What you get                          | Best for                                        |
+|----------------------------------------|---------------------------------------|-------------------------------------------------|
+| `pip install cfdtwin`                  | API only (no Qt; ~80 MB smaller)      | Headless / HPC / scripted surrogate sweeps     |
+| `pip install cfdtwin[gui]`             | API + desktop GUI                     | Engineers who want the wizard, no `git` needed |
+| `git clone … && pip install -e .[dev]` | Everything + examples + tests + tools | Contributors, tutorial learners, tinkerers     |
 
 ```
-pip install cfdtwin                  # from PyPI (released)
-pip install -e .[dev]                # from a clone, with test deps
+pip install cfdtwin              # API only
+pip install cfdtwin[gui]         # adds the wizard-based desktop app
+git clone https://github.com/UARK-NED3/CFDTwin && cd CFDTwin && pip install -e .[dev]
 ```
+
+If you `pip install cfdtwin` (no `[gui]`) and then run `cfdtwin-gui`, you'll
+get a friendly hint to install the GUI extra — no opaque ImportError.
+
+Runnable examples live in [`docs/examples/`](docs/examples/) — only available
+in a clone, or browse them online: https://uark-ned3.github.io/CFDTwin/examples/
 
 ## Use the GUI
 

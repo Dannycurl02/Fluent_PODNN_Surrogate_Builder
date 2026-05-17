@@ -3,6 +3,12 @@ site_description: Neural-network surrogate models for ANSYS Fluent simulations.
 repo_url: https://github.com/UARK-NED3/CFDTwin
 edit_uri: edit/master/docs/
 
+# README.md inside docs/examples/ is for users browsing the GitHub repo
+# (where the docs site isn't available); index.md is the docs-site page.
+# Tell mkdocs to ignore the README so it doesn't try to render both.
+exclude_docs: |
+  examples/README.md
+
 theme:
   name: material
   logo: assets/logo_icon.png
@@ -51,7 +57,9 @@ markdown_extensions:
       anchor_linenums: true
   - pymdownx.superfences
   - pymdownx.inlinehilite
-  - pymdownx.snippets
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true     # fail the build if a snippet target is missing
 
 nav:
   - Home: index.md
@@ -60,7 +68,7 @@ nav:
       - Full workflow: tutorials/full_workflow.md
       - Training tuning: tutorials/training_tuning.md
       - Discovering BC names from Fluent: tutorials/fluent_session.md
-  - Examples: examples/README.md
+  - Examples: examples/index.md
   - API reference:
       - Project: api/project.md
       - Result classes: api/results.md

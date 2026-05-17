@@ -28,16 +28,22 @@ dependencies = [
     "tensorflow>=2.20,<2.21",
     "matplotlib",
     "ansys-fluent-core",
-    "PySide6",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-qt"]
+# GUI is opt-in: pulling Qt is ~80 MB and headless users (HPC, CI, scripted
+# surrogate sweeps) don't need it. `pip install cfdtwin[gui]` adds PySide6
+# so the cfdtwin-gui entry point becomes usable.
+gui = ["PySide6"]
+# Dev extra bundles GUI deps so the local test suite (which includes qtbot
+# GUI tests) works out of the box from a fresh clone.
+dev = ["pytest", "pytest-qt", "PySide6"]
 
 [project.scripts]
-# `cfdtwin-gui` becomes a real shell command after `pip install cfdtwin`.
-# Users can also double-click scripts/launch_gui.bat on Windows.
-cfdtwin-gui = "gui.app:run"
+# `cfdtwin-gui` is a thin shim that prints a friendly install hint if
+# PySide6 isn't present (i.e. the user did `pip install cfdtwin` without
+# the [gui] extra) before launching the real GUI.
+cfdtwin-gui = "gui._entry:run"
 
 [project.urls]
 Homepage = "https://github.com/UARK-NED3/CFDTwin"
