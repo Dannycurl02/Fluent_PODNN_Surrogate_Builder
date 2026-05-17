@@ -26,7 +26,7 @@ from cfdtwin.results import (
     TrainingResult,
 )
 
-__version__ = "0.2.2"
+__version__ = "0.2.3.dev0"
 
 __all__ = [
     "Project",
