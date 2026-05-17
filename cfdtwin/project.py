@@ -362,9 +362,23 @@ class Project:
 
     # --- Fluent ------------------------------------------------------------
 
-    def connect_fluent(self) -> None:
-        """Launch Fluent and load the project's case file. Holds the solver
-        handle on the Project; subsequent calls re-use it."""
+    def connect_fluent(
+        self,
+        precision: str | None = None,
+        processor_count: int | None = None,
+        dimension: int | None = None,
+        use_gui: bool | None = None,
+    ) -> None:
+        """Launch Fluent and load the project's case file.
+
+        Any kwarg passed here overrides the matching field from the project's
+        stored ``solver_settings`` (or the built-in defaults if none stored).
+        Pass ``precision="single"`` when the case file was saved in single
+        precision — Fluent will refuse to read a single-precision case in a
+        double-precision session.
+
+        Holds the solver handle on the Project; subsequent calls re-use it.
+        """
         if self._solver is not None:
             logger.info("Fluent already connected; skipping launch")
             return
@@ -373,9 +387,18 @@ class Project:
             raise RuntimeError(
                 "No valid case file set. Call set_case_file(path) first."
             )
-        solver_settings = self._wp.info.get('solver_settings') or {
+        solver_settings = dict(self._wp.info.get('solver_settings') or {
             'precision': 'double', 'processor_count': 4, 'dimension': 3, 'use_gui': False,
+        })
+        overrides = {
+            'precision': precision,
+            'processor_count': processor_count,
+            'dimension': dimension,
+            'use_gui': use_gui,
         }
+        for k, v in overrides.items():
+            if v is not None:
+                solver_settings[k] = v
         solver = _fluent.launch_fluent(case_file, solver_settings, log_dir=self._wp.logs_dir)
         if solver is None:
             raise RuntimeError("Fluent launch failed; check logs/")
@@ -395,13 +418,30 @@ class Project:
         self,
         iterations: int | None = None,
         reinitialize: bool = True,
+        verbose: bool = False,
         on_progress: Callable | None = None,
         on_iteration: Callable | None = None,
     ) -> SimulationResult:
         """Run all incomplete DOE simulations. Auto-connects Fluent if needed.
 
-        `iterations=None` (default) honors whatever iteration count the case
-        file has set. Pass an int to override that for this batch."""
+        Parameters
+        ----------
+        iterations
+            None (default) honors the iteration count baked into the case
+            file. Pass an int to override for this batch.
+        reinitialize
+            Re-run hybrid initialization before each sim. Usually what you want.
+        verbose
+            If True, prints one "sim X/N <status>" line per simulation as it
+            starts and finishes. Ignored if ``on_progress`` is supplied — your
+            callback takes over.
+        on_progress
+            ``callback(idx, total, sim_id, status)`` — fires when each sim
+            starts, finishes, or fails.
+        on_iteration
+            ``callback(sim_id, iter_num, total_iters)`` — fires per Fluent
+            iteration. Use sparingly; very chatty for long sim batches.
+        """
         if self._solver is None:
             self.connect_fluent()
         if not self._wp.model_setup_file.exists():
@@ -411,6 +451,10 @@ class Project:
         doe_samples, _ = _doe.load_doe_samples(self._wp.doe_samples_file)
         if not doe_samples:
             raise RuntimeError("No DOE samples; call generate_doe(...) first")
+
+        if verbose and on_progress is None:
+            def on_progress(idx, total, sim_id, status):
+                print(f"  sim {idx}/{total} (id={sim_id}): {status}", flush=True)
 
         # Track failed sim_ids by wrapping the user's on_progress callback.
         failed_ids: list[int] = []

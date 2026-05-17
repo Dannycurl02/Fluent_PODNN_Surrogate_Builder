@@ -7,11 +7,10 @@ Two sections: **Pre-v0.1.0 release tasks** (to do before tagging) and
 
 # Pre-v0.1.0 release tasks
 
-## R1. Extensive testing of API + GUI
+## R1. API smoke testing (remaining v0.1.0 blocker)
 
-Verify both surfaces behave correctly end-to-end before tagging v0.1.0.
+GUI smoke done. API still pending — real Fluent required.
 
-**API (real Fluent required):**
 - `pytest tests/integration` — runs the full pipeline against PyFluent's
   mixing_elbow case
 - Each example script runs end-to-end:
@@ -19,22 +18,13 @@ Verify both surfaces behave correctly end-to-end before tagging v0.1.0.
   - `python docs/examples/full_workflow.py`
   - `python docs/examples/training_tuning.py` (depends on full_workflow having run)
   - `python docs/examples/discovering_bcs.py`
-- Manual edge cases:
+- Manual edge cases (quick Python shell against any existing project):
   - `predict()` before training → KeyError on missing model
   - `train()` with no sim data → RuntimeError
-  - `train(model_name="x")` twice → auto-suffix + warning
+  - `train(model_name="x")` twice → auto-suffix + UserWarning
   - Per-output config with both `pod.modes` and `pod.variance` → ValueError
   - Predict with mismatched param keys → sensible error
-
-**GUI (manual smoke):**
-- Fresh project end-to-end: Setup → DOE → Simulate (small N) → Train → Analyze
-- Reopen Test100: every page loads, Analyze auto-focuses first model
-- Regression check on every fix from `gui-fixes` branch (Browse button width,
-  duplicate dataset path, Fluent disconnect detection, per-iter progress bar,
-  Train per-(location, field) row, loss plot linear scale, project delete
-  2-stage Yes, Validate→Analyze rename, R² Y-axis padding, click-to-expand
-  on middle plots, predict bar follows top-left selection, Export Model)
-- Failure modes: kill Fluent mid-sim, click Stop, restart and resume
+  - `list_available_inputs()` before `connect_fluent()` → RuntimeError
 
 **CI sanity:** push a no-op commit, confirm the unit-test matrix passes on
 3.10 / 3.11 / 3.12.
@@ -89,6 +79,21 @@ to the brand hex needs an `extra_css` override:
 
 Effort: ~30 min. Low priority — current colors are close enough that v0.1.0
 ships fine without this; do it when the site is live and you can eyeball it.
+
+---
+
+## R4. Cut the v0.1.0 release
+
+Once R1 (API smoke) is green:
+
+1. Bump `cfdtwin/__init__.py:29` from `"0.1.0.dev0"` → `"0.1.0"`, commit.
+2. On pypi.org → manage cfdtwin → Publishing → add a Trusted Publisher
+   pointing at `UARK-NED3/CFDTwin`, workflow `publish.yml`, environment
+   `pypi`. (One-time setup; required before the first publish works.)
+3. `git tag v0.1.0 && git push --tags` — `publish.yml` builds the wheel +
+   sdist and pushes to PyPI.
+4. Verify install in a clean venv: `pip install cfdtwin && cfdtwin-gui`.
+5. Bump back to `0.1.1.dev0` for ongoing work.
 
 ---
 

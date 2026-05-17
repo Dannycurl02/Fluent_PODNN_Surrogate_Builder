@@ -183,6 +183,25 @@ def _apply_input_parameter(solver, name, value, unit):
         return False
 
 
+def _resolve_bc_type(boundary_conditions, bc_name):
+    """Scan boundary_conditions containers for one that holds bc_name. Return
+    the container attribute name (e.g. 'velocity_inlet'), or None if not found.
+
+    Used when set_inputs got a bare (lo, hi) tuple and we don't yet know the
+    BC type.
+    """
+    for bc_type in dir(boundary_conditions):
+        if bc_type.startswith('_') or bc_type in ('child_names', 'command_names'):
+            continue
+        try:
+            container = getattr(boundary_conditions, bc_type)
+            if bc_name in container:
+                return bc_type
+        except Exception:
+            continue
+    return None
+
+
 def apply_boundary_conditions(solver, bc_values):
     """
     Apply boundary conditions / input parameters to Fluent solver.
@@ -216,9 +235,29 @@ def apply_boundary_conditions(solver, bc_values):
                 continue
 
             bc_name = bc_info['bc_name']
-            bc_type = bc_info['bc_type'].lower().replace(' ', '_')
+            # Fluent's display name is "velocity-inlet" / "mass-flow-inlet" but
+            # PyFluent exposes attributes as velocity_inlet / mass_flow_inlet.
+            # Accept either by normalizing both ' ' and '-' to '_'.
+            bc_type = bc_info['bc_type'].lower().replace(' ', '_').replace('-', '_')
+            # The assignment below sets target.value, so the param_path should
+            # point at the parent that *has* .value. Tolerate users who wrote
+            # the full leaf path with a redundant trailing '.value'.
             param_path = bc_info['param_path']
+            if param_path.endswith('.value'):
+                param_path = param_path[: -len('.value')]
             value = bc_info['value']
+
+            # set_inputs((lo, hi)) form leaves bc_type as 'unknown' on purpose
+            # so the user doesn't have to know Fluent's BC taxonomy. Resolve it
+            # here by finding the container that holds bc_name.
+            if bc_type == 'unknown' or not hasattr(boundary_conditions, bc_type):
+                resolved = _resolve_bc_type(boundary_conditions, bc_name)
+                if resolved is None:
+                    logger.error(
+                        f"BC '{bc_name}' not found in any boundary-condition container"
+                    )
+                    return False
+                bc_type = resolved
 
             if hasattr(boundary_conditions, bc_type):
                 bc_container = getattr(boundary_conditions, bc_type)

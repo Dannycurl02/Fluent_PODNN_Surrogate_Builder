@@ -31,7 +31,10 @@ project.set_outputs([
 ])
 
 project.generate_doe(n=20, method="lhs", seed=42)
-project.run_simulations()
+
+# mixing_elbow.cas.h5 is a single-precision case file.
+project.connect_fluent(precision="single")
+project.run_simulations(verbose=True)   # prints "sim X/N: status" lines
 result = project.train(model_name="run1")
 
 print()

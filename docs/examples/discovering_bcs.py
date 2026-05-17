@@ -19,7 +19,7 @@ CASE_FILE = examples.download_file("mixing_elbow.cas.h5", "pyfluent/mixing_elbow
 
 print(f"Loading {CASE_FILE}...\n")
 solver = pyfluent.launch_fluent(
-    precision="double", processor_count=4, dimension=3, mode="solver",
+    precision="single", processor_count=4, dimension=3, mode="solver",
 )
 solver.settings.file.read_case(file_name=CASE_FILE)
 

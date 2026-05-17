@@ -45,7 +45,8 @@ def test_full_pipeline(tmp_path, mixing_elbow_case):
     n = project.generate_doe(n=4, method="lhs", seed=42)
     assert n == 4
 
-    project.connect_fluent()
+    # mixing_elbow.cas.h5 is a single-precision case.
+    project.connect_fluent(precision="single")
     sim = project.run_simulations(iterations=50)
     assert isinstance(sim, SimulationResult)
     assert sim.successful == 4, f"expected 4 successful sims, got {sim.summary()}"

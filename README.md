@@ -2,23 +2,31 @@
   <img src="docs/assets/logo_wordmark.png" alt="CFDTwin" width="420"/>
 </p>
 
-Wizard-based desktop app for building neural-network surrogate models from ANSYS Fluent simulations. Load a `.cas` file, sample the parameter space, run the batch sim, train a POD+NN model, and validate — all in one GUI.
+Build neural-network surrogate models from ANSYS Fluent simulations.
+Two ways to drive the same pipeline:
+
+- **GUI** — wizard-based desktop app, click through Setup → DOE → Simulate → Train → Analyze.
+- **API** — Python library, the same pipeline as ten method calls in a script.
+
+**Docs:** https://uark-ned3.github.io/CFDTwin/
+**GUI walkthrough (video):** _coming soon_
 
 ## Install
 
 Requires Python 3.10+ and a working ANSYS Fluent installation.
 
 ```
-pip install -e .[dev]   # drop [dev] if you won't run the test suite
+pip install cfdtwin                  # from PyPI (released)
+pip install -e .[dev]                # from a clone, with test deps
 ```
 
-## Run the GUI
+## Use the GUI
 
-Three ways, pick whichever you prefer:
+Three ways to launch, pick whichever you prefer:
 
 ```
 cfdtwin-gui                          # any terminal, after pip install
-python -m gui                        # from the repo root, no install needed
+python -m gui                        # from a repo clone, no install needed
 double-click scripts/launch_gui.bat  # Windows, no terminal pops up
 ```
 
@@ -33,4 +41,48 @@ On launch, select or create a project. The sidebar steps unlock as prerequisites
 2. **DOE** — generate LHS/factorial samples
 3. **Simulate** — batch-run Fluent with live progress
 4. **Train** — transfer-list filter, live loss curves, per-output NN
-5. **Validate** — metrics dashboard, predictions, Fluent comparison with caching
+5. **Analyze** — metrics dashboard, predictions, Fluent comparison with caching
+
+## Use the API
+
+Same pipeline from a Python script — useful for automation, parameter sweeps,
+or building bigger surrogate libraries:
+
+```python
+import cfdtwin
+
+project = cfdtwin.Project.create("./elbow_study", name="elbow_v1")
+project.set_case_file("mixing_elbow.cas.h5")
+
+project.set_inputs({
+    "cold-inlet|momentum > velocity_magnitude": (0.2, 0.6),
+    "hot-inlet|momentum > velocity_magnitude":  (0.4, 1.2),
+})
+project.set_outputs([
+    {"name": "outlet", "category": "Surface",
+     "field_variables": ["temperature"]},
+])
+
+project.generate_doe(n=20, method="lhs")
+project.connect_fluent(precision="single")    # mixing_elbow is a single-precision case
+project.run_simulations()
+project.train(model_name="run1")
+
+pred = project.predict("run1", {
+    "cold-inlet|momentum > velocity_magnitude": 0.4,
+    "hot-inlet|momentum > velocity_magnitude":  0.8,
+})
+print(pred.values.shape)
+```
+
+Runnable scripts live in [`docs/examples/`](docs/examples/) — quickstart,
+full workflow, training tuning, and a "what BCs / parameters does my case
+expose?" discovery script.
+
+- [API reference](https://uark-ned3.github.io/CFDTwin/api/project/) — every method, every argument
+- [Tutorials](https://uark-ned3.github.io/CFDTwin/tutorials/full_workflow/) — narrative walk-throughs
+- [Quickstart](https://uark-ned3.github.io/CFDTwin/quickstart/) — smallest end-to-end script
+
+## License
+
+MIT — see [LICENSE](LICENSE).

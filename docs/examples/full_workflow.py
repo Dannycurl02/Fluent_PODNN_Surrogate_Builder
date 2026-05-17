@@ -41,8 +41,9 @@ n_samples = project.generate_doe(n=20, method="lhs", seed=42)
 print(f"DOE: {n_samples} LHS samples\n")
 
 # --- 4. Run sims ----------------------------------------------------------
-project.connect_fluent()
-sim_result = project.run_simulations(iterations=100)
+# mixing_elbow.cas.h5 is a single-precision case file.
+project.connect_fluent(precision="single")
+sim_result = project.run_simulations(iterations=100, verbose=True)
 print()
 print(sim_result.summary())
 if sim_result.failed:
